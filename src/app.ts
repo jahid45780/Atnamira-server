@@ -1,8 +1,13 @@
 import express, { Request,  Response } from 'express'
+import { router } from './app/routes'
+import { globalErrorHandler } from './app/middleware/globalErrorHandler'
+import NotFound from './app/middleware/NotFound'
 
 const app = express()
 
 app.use(express.json())
+
+app.use('/api/v1', router)
 
 
 app.get("/", (req:Request, res:Response)=>{
@@ -10,5 +15,9 @@ app.get("/", (req:Request, res:Response)=>{
         message:"welcome  to the  server"
     })
 })
+
+
+app.use(globalErrorHandler)
+app.use(NotFound)
 
 export default app
