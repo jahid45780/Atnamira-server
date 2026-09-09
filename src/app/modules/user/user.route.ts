@@ -8,4 +8,6 @@ const router = Router();
 
 router.post('/register', validateRequest(createUserZodSchema), userController.createUser)
 
+router.get("/:id", userController.getSingleUser)
+
 export const userRoutes =  router;
