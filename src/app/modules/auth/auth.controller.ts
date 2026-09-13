@@ -6,6 +6,7 @@ import { createUserToken } from "../../utils/userTokens";
 import { setAuthCookie } from "../../utils/setCookie";
 import { sentResponse } from "../../utils/sendResponse";
 import  httpStatus  from 'http-status-codes';
+import { envVers } from "../../config/env";
 
 
 
@@ -47,7 +48,33 @@ const credentialsLogin = catchAsync(
 );
 
 
+  const googleCallbackController = catchAsync(async (req:Request, res:Response, next:NextFunction)=>{
+  
+
+  let redirectTo = req.query.state ? req.query.state as string : ""
+
+  if(redirectTo.startsWith('/')){
+   redirectTo = redirectTo.slice(1)
+  }
+
+  const user = req.user;
+  if(!user){
+    throw new AppError(httpStatus.NOT_FOUND,"user not found")
+  }
+
+  const TokenInfo = createUserToken(user)
+
+  setAuthCookie(res, TokenInfo)
+
+ res.redirect(`${envVers.FRONTEND_URL}/${redirectTo}`)
+  
+ 
+})
+
+
+
 
  export const authController = {
-     credentialsLogin
+     credentialsLogin,
+     googleCallbackController
  }

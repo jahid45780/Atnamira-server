@@ -66,6 +66,21 @@ const createUser = async (payload:Partial<IUser>)=>{
 //         return newUpdateUser
 // }
 
+const getAllUsers = async ()=>{
+    const users = await User.find({})
+
+    const totalUsers = await User.countDocuments()
+     
+
+    return{
+        data:users,
+        meta:{
+            total:totalUsers
+        }
+
+    }
+}
+
 const getSingleUser = async (id: string) => {
     const user = await User.findById(id).select("-password");
     return {
@@ -73,8 +88,21 @@ const getSingleUser = async (id: string) => {
     }
 };
 
+
+
+
+const getMe = async (userId: string) => {
+    const user = await User.findById(userId).select("-password");
+    return {
+        data: user
+    }
+};
+
+
   export const userService = {
      createUser,
      getSingleUser,
-     
+     getMe,
+     getAllUsers
+
  }
