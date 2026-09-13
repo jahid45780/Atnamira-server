@@ -48,6 +48,31 @@ const credentialsLogin = catchAsync(
 );
 
 
+const logout = catchAsync(async(req:Request, res:Response, next:NextFunction)=>{
+  
+  res.clearCookie("accessToken",{
+     httpOnly:true,
+     secure:false,
+     sameSite:"lax"
+  })
+
+  res.clearCookie("refreshToken",{
+    httpOnly:true,
+    secure:false,
+    sameSite:"lax"
+  })
+
+    sentResponse(res,{
+    success:true,
+    statusCode:httpStatus.OK,
+    message:"successfully  logged out user",
+    data:null
+   
+  })
+
+})
+
+
   const googleCallbackController = catchAsync(async (req:Request, res:Response, next:NextFunction)=>{
   
 
@@ -74,7 +99,10 @@ const credentialsLogin = catchAsync(
 
 
 
+
+
  export const authController = {
      credentialsLogin,
-     googleCallbackController
+     googleCallbackController,
+     logout
  }

@@ -5,7 +5,7 @@ export const createUserZodSchema = z.object({
   body: z.object({
     name: z
       .string("Name must be string")
-      .min(2, { message: "Name must be at least 2 characters long" })
+      .min(1, { message: "Name must be at least 1 character long" })
       .max(50, { message: "Name cannot exceed 50 characters" }),
 
     email: z
@@ -35,10 +35,6 @@ export const createUserZodSchema = z.object({
       })
       .optional(),
 
-    address: z
-      .string("Address must be string")
-      .max(200, { message: "Address cannot exceed 200 characters" })
-      .optional(),
   }),
 });
 

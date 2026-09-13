@@ -6,8 +6,8 @@ import passport from "passport";
 
 
 
- router.post('/login',authController.credentialsLogin)
-
+  router.post('/login',authController.credentialsLogin)
+  router.post("/logOut", authController.logout)
 
 
 

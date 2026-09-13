@@ -18,14 +18,23 @@ interface envConfig{
     GOOGLE_CLIENT_ID: string,
     GOOGLE_CLIENT_SECRET: string,
     GOOGLE_CALLBACK_URL: string,
-    EXPRESS_SESSION_SECRET: string
+    EXPRESS_SESSION_SECRET: string,
+        
+    // cloudinary
+
+    CLOUDINARY: {
+        CLOUDINARY_CLOUD_NAME: string;
+        CLOUDINARY_API_KEY: string;
+        CLOUDINARY_API_SECRET: string;
+    };
 
 }
 
 const loadEnvVars = ():envConfig =>{
     const reqEnvVars : string[] =[
         "PORT","DB_URL","NODE_ENV","JWT_ACCESS_SECRET","JWT_ACCESS_EXPIRES","JWT_ACCESS_REFRESH_SECRET","JWT_ACCESS_REFRESH_EXPIRES","BCRYPT_SALT_ROUND","FRONTEND_URL","GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET","GOOGLE_CALLBACK_URL","EXPRESS_SESSION_SECRET"
+        "GOOGLE_CLIENT_SECRET","GOOGLE_CALLBACK_URL",
+        "EXPRESS_SESSION_SECRET","CLOUDINARY_CLOUD_NAME","CLOUDINARY_API_KEY","CLOUDINARY_API_SECRET"
     ]  
     
     
@@ -49,7 +58,15 @@ const loadEnvVars = ():envConfig =>{
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID as string,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET as string,
     GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL as string,
-    EXPRESS_SESSION_SECRET: process.env.EXPRESS_SESSION_SECRET as string
+    EXPRESS_SESSION_SECRET: process.env.EXPRESS_SESSION_SECRET as string,
+
+     // cloudinay
+     
+        CLOUDINARY: {
+            CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME as string,
+            CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY as string,
+            CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET as string,
+        },
 
     }
 
