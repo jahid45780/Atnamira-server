@@ -50,13 +50,13 @@ const credentialsLogin = catchAsync(
 
 const logout = catchAsync(async(req:Request, res:Response, next:NextFunction)=>{
   
-  res.clearCookie("accessToken",{
+  res.clearCookie("AccessToken",{
      httpOnly:true,
      secure:false,
      sameSite:"lax"
   })
 
-  res.clearCookie("refreshToken",{
+  res.clearCookie("RefreshToken",{
     httpOnly:true,
     secure:false,
     sameSite:"lax"

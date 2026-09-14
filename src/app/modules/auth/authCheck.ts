@@ -9,7 +9,7 @@ import { JwtPayload } from "jsonwebtoken";
 
 export const checkAuth = ((...authRoles:string[])=> async (req:Request,res:Response,next:NextFunction)=>{
      try {
-        const accessToken =  req.cookies.accessToken ||
+        const accessToken =  req.cookies.AccessToken ||
         req.headers.authorization?.replace("Bearer ", "");
 
         if(!accessToken){
