@@ -1,8 +1,5 @@
-import { Document } from "mongoose";
-
-export interface IProduct extends Document {
+export interface IProduct {
   name: string;
-
   slug: string;
 
   category:
@@ -14,29 +11,22 @@ export interface IProduct extends Document {
   description: string;
 
   price: number;
-
   oldPrice?: number;
 
-  rating: number;
-
-  reviews: number;
+  rating?: number;
+  reviews?: number;
 
   images: {
-    main: string;
+    main?: string;
     hover?: string;
   };
 
-  colors: string[];
+  colors?: string[];
+  sizes?: string[];
 
-  sizes: string[];
-
-  badge?: "New" | "Trending" | "Popular" | "Sale";
+  badge?: "New" | "Trending" | "Popular" | "Sale" | "Best Seller";
 
   stock: number;
 
-  isActive: boolean;
-
-  createdAt: Date;
-
-  updatedAt: Date;
+  isActive?: boolean;
 }

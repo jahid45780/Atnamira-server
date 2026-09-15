@@ -48,25 +48,22 @@ const productSchema = new Schema<IProduct>(
     rating: {
       type: Number,
       default: 0,
-      min: 0,
-      max: 5,
+      min: [0, "Rating cannot be less than 0"],
+      max: [5, "Rating cannot be greater than 5"],
     },
 
     reviews: {
       type: Number,
       default: 0,
-      min: 0,
+      min: [0, "Reviews cannot be negative"],
     },
 
     images: {
       main: {
         type: String,
-        default: "https://placehold.co/600x600?text=Product",
       },
-
       hover: {
         type: String,
-        default: "https://placehold.co/600x600?text=Product",
       },
     },
 
@@ -87,6 +84,7 @@ const productSchema = new Schema<IProduct>(
         "Trending",
         "Popular",
         "Sale",
+        "Best Seller",
       ],
     },
 
@@ -106,6 +104,33 @@ const productSchema = new Schema<IProduct>(
     timestamps: true,
   }
 );
+
+
+// ==========================================
+// Auto Generate Unique Slug From Product Name
+// ==========================================
+
+productSchema.pre("validate", async function () {
+  if (!this.isModified("name")) {
+    return;
+  }
+
+  const baseSlug = this.name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  let slug = baseSlug;
+  let counter = 1;
+
+  while (await Product.exists({ slug })) {
+    slug = `${baseSlug}-${counter++}`;
+  }
+
+  this.slug = slug;
+});
+
 
 export const Product = model<IProduct>(
   "Product",
