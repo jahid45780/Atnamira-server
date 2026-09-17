@@ -11,40 +11,94 @@ import { envVers } from "./app/config/env";
 
 import "./app/config/passport";
 
+import { paymentController } from "./app/modules/payment/payment.controller";
+
 const app = express();
+
+/* ================================
+   Session
+================================ */
 
 app.use(
   expressSession({
     secret: envVers.EXPRESS_SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-  })
+  }),
 );
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use(cookieParser());
+/* ================================
+   CORS
+================================ */
 
 app.use(
   cors({
     origin: envVers.FRONTEND_URL,
     credentials: true,
-  })
+  }),
 );
+
+/* ================================
+   Stripe Webhook
+   MUST BE BEFORE express.json()
+================================ */
+
+app.use(
+  "/api/v1/payment/webhook",
+  express.raw({
+    type: "application/json",
+  }),
+  paymentController.handleStripeWebhook,
+);
+
+/* ================================
+   Body Parsers
+================================ */
+
+app.use(express.json());
+
+app.use(
+  express.urlencoded({
+    extended: true,
+  }),
+);
+
+/* ================================
+   Cookie
+================================ */
+
+app.use(cookieParser());
+
+/* ================================
+   Passport
+================================ */
 
 app.use(passport.initialize());
 app.use(passport.session());
 
+/* ================================
+   API Routes
+================================ */
+
 app.use("/api/v1", router);
+
+/* ================================
+   Root Route
+================================ */
 
 app.get("/", (req: Request, res: Response) => {
   res.status(200).json({
-    message: "welcome to the server",
+    success: true,
+    message: "Welcome to the Atnamira server",
   });
 });
 
+/* ================================
+   Error Handler
+================================ */
+
 app.use(globalErrorHandler);
+
 app.use(NotFound);
 
 export default app;

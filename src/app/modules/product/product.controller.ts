@@ -42,19 +42,24 @@ const createProduct = catchAsync(
 // Get All Products
 // ================================
 
+
 const getAllProducts = catchAsync(
   async (req: Request, res: Response) => {
-
-    const result = await productService.getAllProducts();
+    const result = await productService.getAllProducts(
+      req.query
+    );
 
     sentResponse(res, {
-      success: true,
       statusCode: 200,
+      success: true,
       message: "Products retrieved successfully",
       data: result.data,
+      meta: result.meta,
     });
   }
 );
+
+
 
 
  // ================================

@@ -8,13 +8,12 @@ const router = Router();
 
 router.post(
   "/create-product",
-  multerUpload.array("files"),
-  // validateRequest(productValidation.createProductValidation),
+  multerUpload.array("files", 2),
   productController.createProduct
 );
 
 router.get(
-  "/",
+  "/get-all-product",
   productController.getAllProducts
 );
 
