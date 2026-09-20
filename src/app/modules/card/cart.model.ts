@@ -1,4 +1,3 @@
-
 import { Schema, model } from "mongoose";
 
 const cartItemSchema = new Schema(
@@ -18,12 +17,14 @@ const cartItemSchema = new Schema(
 
     color: {
       type: String,
-      required: true,
+      trim: true,
+      default: "",
     },
 
     size: {
       type: String,
-      required: true,
+      trim: true,
+      default: "",
     },
   },
   {
