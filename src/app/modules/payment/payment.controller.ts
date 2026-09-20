@@ -1,10 +1,11 @@
-
 import { Request, Response } from "express";
 import Stripe from "stripe";
 
 import { envVers } from "../../config/env";
+import { stripe } from "../../config/stripe.config";
 
 import { Booking } from "../booking/booking.model";
+import { Product } from "../product/product.model";
 
 import {
   PaymentStatus,
@@ -12,8 +13,7 @@ import {
 } from "../booking/booking.interface";
 
 import { paymentService } from "./payment.service";
-import { stripe } from "../../config/stripe.config";
-
+import { Cart } from "../card/cart.model";
 
 // ========================================
 // CREATE CHECKOUT SESSION
@@ -149,6 +149,150 @@ const createCheckoutSession = async (
   }
 };
 
+// ========================================
+// PROCESS SUCCESSFUL PAYMENT
+// ========================================
+
+const processSuccessfulPayment = async (
+  bookingId: string,
+  sessionId?: string,
+  paymentIntentId?: string,
+) => {
+  // --------------------------------------
+  // Find booking
+  // --------------------------------------
+
+  const booking =
+    await Booking.findById(bookingId);
+
+  if (!booking) {
+    console.log(
+      `Booking not found: ${bookingId}`,
+    );
+
+    return;
+  }
+
+  // --------------------------------------
+  // DUPLICATE PROTECTION
+  // --------------------------------------
+  // If already PAID, do not decrease
+  // stock or clear cart again.
+  // --------------------------------------
+
+  if (
+    booking.paymentStatus ===
+    PaymentStatus.PAID
+  ) {
+    console.log(
+      `Booking ${bookingId} already processed`,
+    );
+
+    return;
+  }
+
+  // --------------------------------------
+  // Validate booking items
+  // --------------------------------------
+
+  if (!booking.items?.length) {
+    console.log(
+      `Booking ${bookingId} has no items`,
+    );
+
+    return;
+  }
+
+  // --------------------------------------
+  // Check stock before updating anything
+  // --------------------------------------
+
+  for (const item of booking.items) {
+    const product =
+      await Product.findById(item.product);
+
+    if (!product) {
+      throw new Error(
+        `Product not found: ${item.product}`,
+      );
+    }
+
+    if (!product.stock || product.stock < item.quantity) {
+      throw new Error(
+        `Insufficient stock for product: ${item.name}`,
+      );
+    }
+  }
+
+  // --------------------------------------
+  // Decrease product stock
+  // --------------------------------------
+
+  for (const item of booking.items) {
+    const product =
+      await Product.findById(item.product);
+
+    if (!product) {
+      throw new Error(
+        `Product not found: ${item.product}`,
+      );
+    }
+
+    product.stock =
+      product.stock - item.quantity;
+
+    await product.save();
+
+    console.log(
+      `Stock decreased: ${item.name} (-${item.quantity})`,
+    );
+  }
+
+  // --------------------------------------
+  // Update booking
+  // --------------------------------------
+
+  booking.paymentStatus =
+    PaymentStatus.PAID;
+
+  booking.bookingStatus =
+    BookingStatus.CONFIRMED;
+
+  if (sessionId) {
+    booking.stripeSessionId =
+      sessionId;
+  }
+
+  if (paymentIntentId) {
+    booking.stripePaymentIntentId =
+      paymentIntentId;
+  }
+
+  await booking.save();
+
+  // --------------------------------------
+  // Clear user's cart
+  // --------------------------------------
+
+  await Cart.findOneAndUpdate(
+    {
+      user: booking.user,
+    },
+    {
+      $set: {
+        items: [],
+      },
+    },
+  );
+
+  console.log(
+    `Cart cleared for user ${booking.user}`,
+  );
+
+  console.log(
+    `Booking ${bookingId} successfully processed`,
+  );
+};
 
 // ========================================
 // STRIPE WEBHOOK
@@ -161,9 +305,9 @@ const handleStripeWebhook = async (
   const signature =
     req.headers["stripe-signature"];
 
-  // -----------------------------
+  // --------------------------------------
   // Check signature
-  // -----------------------------
+  // --------------------------------------
 
   if (!signature) {
     return res.status(400).send(
@@ -171,11 +315,14 @@ const handleStripeWebhook = async (
     );
   }
 
-  // -----------------------------
+  // --------------------------------------
   // Check webhook secret
-  // -----------------------------
+  // --------------------------------------
 
-  if (!envVers.STRIPE.STRIPE_WEBHOOK_SECRET) {
+  if (
+    !envVers.STRIPE
+      .STRIPE_WEBHOOK_SECRET
+  ) {
     return res.status(500).send(
       "Stripe webhook secret is missing",
     );
@@ -183,16 +330,17 @@ const handleStripeWebhook = async (
 
   let event: Stripe.Event;
 
-  // -----------------------------
+  // --------------------------------------
   // Verify Stripe webhook
-  // -----------------------------
+  // --------------------------------------
 
   try {
     event =
       stripe.webhooks.constructEvent(
         req.body,
         signature,
-        envVers.STRIPE.STRIPE_WEBHOOK_SECRET,
+        envVers.STRIPE
+          .STRIPE_WEBHOOK_SECRET,
       );
   } catch (error) {
     console.error(
@@ -205,13 +353,12 @@ const handleStripeWebhook = async (
     );
   }
 
-  // -----------------------------
+  // --------------------------------------
   // Handle event
-  // -----------------------------
+  // --------------------------------------
 
   try {
     switch (event.type) {
-
       // ==================================
       // CHECKOUT SESSION COMPLETED
       // ==================================
@@ -226,67 +373,27 @@ const handleStripeWebhook = async (
 
         if (!bookingId) {
           console.log(
-            "Booking ID missing from metadata",
+            "Booking ID missing from session metadata",
           );
 
           break;
         }
-
-        const booking =
-          await Booking.findById(
-            bookingId,
-          );
-
-        if (!booking) {
-          console.log(
-            `Booking not found: ${bookingId}`,
-          );
-
-          break;
-        }
-
-        // -----------------------------
-        // Payment successful
-        // -----------------------------
-
-        booking.paymentStatus =
-          PaymentStatus.PAID;
-
-        // -----------------------------
-        // Confirm booking
-        // -----------------------------
-
-        booking.bookingStatus =
-          BookingStatus.CONFIRMED;
-
-        // -----------------------------
-        // Save Stripe Session ID
-        // -----------------------------
-
-        booking.stripeSessionId =
-          session.id;
-
-        // -----------------------------
-        // Save Payment Intent ID
-        // -----------------------------
-
-        if (
-          typeof session.payment_intent ===
-          "string"
-        ) {
-          booking.stripePaymentIntentId =
-            session.payment_intent;
-        }
-
-        await booking.save();
 
         console.log(
-          `Booking ${bookingId} payment completed`,
+          `Processing checkout.session.completed for ${bookingId}`,
+        );
+
+        await processSuccessfulPayment(
+          bookingId,
+          session.id,
+          typeof session.payment_intent ===
+            "string"
+            ? session.payment_intent
+            : undefined,
         );
 
         break;
       }
-
 
       // ==================================
       // PAYMENT INTENT SUCCEEDED
@@ -302,55 +409,24 @@ const handleStripeWebhook = async (
 
         if (!bookingId) {
           console.log(
-            "Booking ID missing from PaymentIntent",
+            "Booking ID missing from PaymentIntent metadata",
           );
 
           break;
         }
-
-        const booking =
-          await Booking.findById(
-            bookingId,
-          );
-
-        if (!booking) {
-          console.log(
-            `Booking not found: ${bookingId}`,
-          );
-
-          break;
-        }
-
-        // -----------------------------
-        // Payment successful
-        // -----------------------------
-
-        booking.paymentStatus =
-          PaymentStatus.PAID;
-
-        // -----------------------------
-        // Confirm booking
-        // -----------------------------
-
-        booking.bookingStatus =
-          BookingStatus.CONFIRMED;
-
-        // -----------------------------
-        // Save PaymentIntent ID
-        // -----------------------------
-
-        booking.stripePaymentIntentId =
-          paymentIntent.id;
-
-        await booking.save();
 
         console.log(
-          `Payment succeeded for booking ${bookingId}`,
+          `Processing payment_intent.succeeded for ${bookingId}`,
+        );
+
+        await processSuccessfulPayment(
+          bookingId,
+          undefined,
+          paymentIntent.id,
         );
 
         break;
       }
-
 
       // ==================================
       // PAYMENT INTENT FAILED
@@ -366,7 +442,7 @@ const handleStripeWebhook = async (
 
         if (!bookingId) {
           console.log(
-            "Booking ID missing from failed payment",
+            "Booking ID missing from failed PaymentIntent",
           );
 
           break;
@@ -385,9 +461,20 @@ const handleStripeWebhook = async (
           break;
         }
 
-        // -----------------------------
-        // Payment failed
-        // -----------------------------
+        // --------------------------------
+        // Don't overwrite successful payment
+        // --------------------------------
+
+        if (
+          booking.paymentStatus ===
+          PaymentStatus.PAID
+        ) {
+          console.log(
+            `Booking ${bookingId} already paid`,
+          );
+
+          break;
+        }
 
         booking.paymentStatus =
           PaymentStatus.FAILED;
@@ -401,7 +488,6 @@ const handleStripeWebhook = async (
         break;
       }
 
-
       // ==================================
       // OTHER EVENTS
       // ==================================
@@ -413,14 +499,13 @@ const handleStripeWebhook = async (
       }
     }
 
-    // -----------------------------
+    // --------------------------------------
     // Stripe success response
-    // -----------------------------
+    // --------------------------------------
 
     return res.status(200).json({
       received: true,
     });
-
   } catch (error) {
     console.error(
       "Stripe webhook processing error:",
@@ -435,7 +520,6 @@ const handleStripeWebhook = async (
     });
   }
 };
-
 
 // ========================================
 // EXPORT
