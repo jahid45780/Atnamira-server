@@ -13,5 +13,35 @@ router.get("/me", checkAuth(...Object.values(Role)), userController.getMe)
 router.get("/get-all-users", checkAuth(Role.ADMIN), userController.getAllUsers)
 router.get("/:id", userController.getSingleUser)
 
+/**
+ * USER → ADMIN
+ * ADMIN ONLY
+ */
+router.patch(
+  "/:id/make-admin",
+  checkAuth(Role.ADMIN),
+  userController.makeAdmin,
+);
+
+/**
+ * ADMIN → USER
+ * ADMIN ONLY
+ */
+router.patch(
+  "/:id/make-user",
+  checkAuth(Role.ADMIN),
+  userController.makeUser,
+);
+
+/**
+ * Delete user
+ * ADMIN ONLY
+ */
+router.delete(
+  "/:id",
+  checkAuth(Role.ADMIN),
+  userController.deleteUser,
+);
+
 
 export const userRoutes =  router;

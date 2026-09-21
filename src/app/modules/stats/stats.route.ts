@@ -68,4 +68,10 @@ router.get(
   StatsController.getPaymentStats,
 );
 
+router.get(
+  "/orders",
+  checkAuth(Role.ADMIN),
+  StatsController.getAllAdminBookings,
+);
+
 export const statsRoutes = router;

@@ -140,18 +140,44 @@ const getPaymentStats = catchAsync(
   },
 );
 
+
+
+const getAllAdminBookings = catchAsync(
+  async (req: Request, res: Response) => {
+    const page = Math.max(
+      Number(req.query.page) || 1,
+      1,
+    );
+
+    const limit = Math.min(
+      Math.max(Number(req.query.limit) || 10, 1),
+      100,
+    );
+
+    const result = await StatsService.getAllAdminBookings({
+      page,
+      limit,
+    });
+
+    sentResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "Orders retrieved successfully",
+      data: result.data,
+      meta: result.meta,
+    });
+  },
+);
+
 /* =========================================================
    EXPORT
 ========================================================= */
 
 export const StatsController = {
   getUserStats,
-
   getUserOverviewStats,
-
   getProductStats,
-
   getBookingStats,
-
   getPaymentStats,
+  getAllAdminBookings
 };

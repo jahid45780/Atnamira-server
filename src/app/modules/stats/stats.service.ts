@@ -10,7 +10,10 @@ import { Role, isActive } from "../user/user.interface";
 import { User } from "../user/user.model";
 
 import {
+  IAdminBooking,
   IBookingStats,
+  IGetOrdersParams,
+  IGetOrdersResult,
   IPaymentStats,
   IProductStats,
   IUserOverviewStats,
@@ -696,18 +699,51 @@ const getPaymentStats =
     };
   };
 
-/* =========================================================
+
+
+const getAllAdminBookings = async ({
+  page,
+  limit,
+}: IGetOrdersParams): Promise<IGetOrdersResult> => {
+  const skip = (page - 1) * limit;
+
+  const [orders, total] = await Promise.all([
+    Booking.find()
+      .populate("user", "name email phone")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    Booking.countDocuments(),
+  ]);
+
+  const totalPage = Math.ceil(total / limit);
+
+  return {
+    data: orders as unknown as IAdminBooking[],
+
+    meta: {
+      page,
+      limit,
+      total,
+      totalPage,
+    },
+  };
+};
+
+
+
+/* ========================================================
    EXPORT
 ========================================================= */
 
 export const StatsService = {
   getUserStats,
-
   getUserOverviewStats,
-
   getProductStats,
-
   getBookingStats,
-
   getPaymentStats,
+  getAllAdminBookings,
+ 
 };

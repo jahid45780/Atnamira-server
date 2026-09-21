@@ -1,8 +1,9 @@
 import { envVers } from "../../config/env";
 import AppError from "../../errorHerplrs/appError";
-import { IAuthProvider, IUser } from "./user.interface";
+import { IAuthProvider, IUser, Role } from "./user.interface";
 import { User } from "./user.model";
 import bcrypt from "bcrypt";
+import  httpStatus  from 'http-status-codes';
 
 const createUser = async (payload:Partial<IUser>)=>{
 
@@ -67,7 +68,9 @@ const createUser = async (payload:Partial<IUser>)=>{
 // }
 
 const getAllUsers = async ()=>{
-    const users = await User.find({})
+    const users = (await User.find({})
+    .select("-password")
+    .sort({ createdAt: -1 }))
 
     const totalUsers = await User.countDocuments()
      
@@ -99,10 +102,108 @@ const getMe = async (userId: string) => {
 };
 
 
+/**
+ * Make USER → ADMIN
+ */
+const makeAdmin = async (userId: string) => {
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      "User not found",
+    );
+  }
+
+  if (user.role === Role.ADMIN) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "User is already an admin",
+    );
+  }
+
+  user.role = Role.ADMIN;
+
+  await user.save();
+
+  return User.findById(userId).select("-password");
+};
+
+/**
+ * Make ADMIN → USER
+ */
+const makeUser = async (
+  userId: string,
+  adminId?: string,
+) => {
+  // Admin cannot demote himself
+  if (userId === adminId) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "You cannot demote yourself",
+    );
+  }
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      "User not found",
+    );
+  }
+
+  if (user.role === Role.USER) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "User is already a USER",
+    );
+  }
+
+  user.role = Role.USER;
+
+  await user.save();
+
+  return User.findById(userId).select("-password");
+};
+
+/**
+ * Delete user
+ */
+const deleteUser = async (
+  userId: string,
+  adminId?: string,
+) => {
+  // Admin cannot delete himself
+  if (userId === adminId) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "You cannot delete your own account",
+    );
+  }
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      "User not found",
+    );
+  }
+
+  await User.findByIdAndDelete(userId);
+
+  return null;
+};
+
+
   export const userService = {
      createUser,
      getSingleUser,
      getMe,
-     getAllUsers
+     getAllUsers,
+     makeAdmin,
+     makeUser,
+     deleteUser,
 
  }

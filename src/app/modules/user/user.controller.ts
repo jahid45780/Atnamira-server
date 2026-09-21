@@ -67,12 +67,78 @@ const createUser = catchAsync (async  (req:Request, res:Response, next:NextFunct
 })
 
 
+/**
+ * USER → ADMIN
+ */
+const makeAdmin = catchAsync(
+  async (req: Request, res: Response) => {
+    const userId = String(req.params.id);
+
+    const result = await userService.makeAdmin(userId);
+
+    sentResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "User promoted to admin successfully",
+      data: result,
+    });
+  },
+);
+
+/**
+ * ADMIN → USER
+ */
+const makeUser = catchAsync(
+  async (req: Request, res: Response) => {
+    const userId = String(req.params.id);
+
+    const adminId = req.user?.userId;
+
+    const result = await userService.makeUser(
+      userId,
+      adminId,
+    );
+
+    sentResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "Admin demoted to user successfully",
+      data: result,
+    });
+  },
+);
+
+/**
+ * Delete user
+ */
+const deleteUser = catchAsync(
+  async (req: Request, res: Response) => {
+    const userId = String(req.params.id);
+
+    const adminId = req.user?.userId;
+
+    const result = await userService.deleteUser(
+      userId,
+      adminId,
+    );
+
+    sentResponse(res, {
+      success: true,
+      statusCode: httpStatus.OK,
+      message: "User deleted successfully",
+      data: result,
+    });
+  },
+);
 
 
   export const userController = {
     createUser,
     getSingleUser,
     getAllUsers,
-    getMe
+    getMe,
+    makeAdmin,
+    makeUser,
+    deleteUser,
   }
    
