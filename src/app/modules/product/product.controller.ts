@@ -5,6 +5,7 @@ import { productService } from "./product.service";
 import { catchAsync } from "../../utils/catchAsync";
 import { sentResponse } from "../../utils/sendResponse";
 import { IProduct } from "./product.interface";
+import { StatusCodes } from "http-status-codes";
 
 const createProduct = catchAsync(
   async (req: Request, res: Response) => {
@@ -60,6 +61,27 @@ const getAllProducts = catchAsync(
 );
 
 
+const getBestSellingToday = catchAsync(
+  async (req: Request, res: Response) => {
+    const result =
+      await productService.getBestSellingToday();
+
+    sentResponse(res, {
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: "Best selling products fetched successfully",
+      data: result.products,
+      meta: {
+        page: 1,
+        limit: 10,
+        total: result.totalProducts,
+        totalPage: Math.ceil(
+          result.totalProducts / 10
+        ),
+      },
+    });
+  }
+);
 
 
  // ================================
@@ -145,5 +167,6 @@ export const productController = {
   getAllProducts,
   getSingleProduct,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  getBestSellingToday
 };

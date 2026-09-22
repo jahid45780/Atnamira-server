@@ -19,6 +19,13 @@ router.get(
 );
 
 router.get(
+  "/getBestSellingToday",
+  productController.getBestSellingToday
+);
+
+
+
+router.get(
   "/:id",
   productController.getSingleProduct
 );

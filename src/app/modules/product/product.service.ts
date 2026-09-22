@@ -3,6 +3,14 @@
 import { IProduct } from "./product.interface";
 import { Product } from "./product.model";
 
+
+   const PRODUCTS_PER_DAY = 10;
+
+   const ROTATION_START_DATE = new Date(
+  "2026-09-23T00:00:00.000Z"
+);
+
+
 const createProduct = async (payload: IProduct) => {
   const product = await Product.create(payload);
 
@@ -16,10 +24,11 @@ const createProduct = async (payload: IProduct) => {
 // ================================
 
 
- const getAllProducts = async (query: Record<string, unknown>) => {
+const getAllProducts = async (query: Record<string, unknown>) => {
   const {
     search,
     category,
+    badge,
     sort = "newest",
     page = 1,
     limit = 5,
@@ -39,6 +48,13 @@ const createProduct = async (payload: IProduct) => {
   // =========================
   if (category && category !== "All") {
     filter.category = category;
+  }
+
+  // =========================
+  // Badge Filter
+  // =========================
+  if (badge && badge !== "All") {
+    filter.badge = badge;
   }
 
   // =========================
@@ -92,7 +108,6 @@ const createProduct = async (payload: IProduct) => {
     };
   }
 
-  // Sizes sorting
   if (sort === "size") {
     sortQuery = {
       sizes: 1,
@@ -128,6 +143,57 @@ const createProduct = async (payload: IProduct) => {
   };
 };
 
+
+
+const getBestSellingToday = async () => {
+  const products = await Product.find({
+    badge: "Best Seller",
+    isActive: true,
+  })
+    .sort({
+      createdAt: 1,
+      _id: 1,
+    })
+    .lean();
+
+  const totalProducts = products.length;
+
+  if (totalProducts === 0) {
+    return {
+      products: [],
+      totalProducts: 0,
+    };
+  }
+
+  const differenceInDays = Math.floor(
+    (Date.now() - ROTATION_START_DATE.getTime()) /
+      (1000 * 60 * 60 * 24)
+  );
+
+  const startIndex =
+    (differenceInDays * PRODUCTS_PER_DAY) %
+    totalProducts;
+
+  let todayProducts = products.slice(
+    startIndex,
+    startIndex + PRODUCTS_PER_DAY
+  );
+
+  if (todayProducts.length < PRODUCTS_PER_DAY) {
+    const remaining =
+      PRODUCTS_PER_DAY - todayProducts.length;
+
+    todayProducts = [
+      ...todayProducts,
+      ...products.slice(0, remaining),
+    ];
+  }
+
+  return {
+    products: todayProducts,
+    totalProducts,
+  };
+};
 
 // ================================
 // Get Single Product
@@ -195,5 +261,6 @@ export const productService = {
   getAllProducts,
   getSingleProduct,
    updateProduct,
-   deleteProduct
+   deleteProduct,
+   getBestSellingToday
 };
