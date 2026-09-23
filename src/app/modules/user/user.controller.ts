@@ -5,6 +5,7 @@ import { userService } from "./user.service"
 import { sentResponse } from "../../utils/sendResponse"
 import httpStatus from "http-status-codes"
 import { JwtPayload } from "jsonwebtoken"
+import AppError from "../../errorHerplrs/appError"
 
 
 const createUser = catchAsync (async  (req:Request, res:Response, next:NextFunction)=>{
@@ -26,6 +27,33 @@ const createUser = catchAsync (async  (req:Request, res:Response, next:NextFunct
   
 
 })
+
+
+const updateUser = catchAsync(async (req: Request, res: Response) => {
+  const userId = String(req.params.userId);
+
+  if (!req.user) {
+    throw new AppError(
+      httpStatus.UNAUTHORIZED,
+      "User is not authenticated"
+    );
+  }
+
+  const payload = req.body;
+
+  const result = await userService.updateUser(
+    userId,
+    payload,
+    req.user
+  );
+
+  sentResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "User updated successfully",
+    data: result,
+  });
+});
 
 
  const getSingleUser = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -134,6 +162,7 @@ const deleteUser = catchAsync(
 
   export const userController = {
     createUser,
+    updateUser,
     getSingleUser,
     getAllUsers,
     getMe,
