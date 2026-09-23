@@ -137,6 +137,9 @@ export interface IAdminBooking {
  export interface IGetOrdersParams {
   page: number;
   limit: number;
+  search?: string;
+  paymentStatus?: string;
+  bookingStatus?: string;
 }
 
  export interface IGetOrdersResult {

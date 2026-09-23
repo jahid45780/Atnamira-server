@@ -6,7 +6,7 @@ import {
 
 import { Product } from "../product/product.model";
 
-import { Role, isActive } from "../user/user.interface";
+import {  isActive } from "../user/user.interface";
 import { User } from "../user/user.model";
 
 import {
@@ -704,21 +704,97 @@ const getPaymentStats =
 const getAllAdminBookings = async ({
   page,
   limit,
+  search,
+  paymentStatus,
+  bookingStatus,
 }: IGetOrdersParams): Promise<IGetOrdersResult> => {
   const skip = (page - 1) * limit;
 
+  const filter: Record<string, any> = {};
+
+  // =====================================
+  // PAYMENT STATUS FILTER
+  // =====================================
+
+  if (
+    paymentStatus &&
+    paymentStatus !== "ALL"
+  ) {
+    filter.paymentStatus = paymentStatus;
+  }
+
+  // =====================================
+  // BOOKING STATUS FILTER
+  // =====================================
+
+  if (
+    bookingStatus &&
+    bookingStatus !== "ALL"
+  ) {
+    filter.bookingStatus = bookingStatus;
+  }
+
+  // =====================================
+  // SEARCH
+  // =====================================
+
+  if (search?.trim()) {
+    const searchRegex = {
+      $regex: search.trim(),
+      $options: "i",
+    };
+
+    const users = await User.find({
+      $or: [
+        { name: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
+      ],
+    })
+      .select("_id")
+      .lean();
+
+    const userIds = users.map(
+      (user) => user._id,
+    );
+
+    filter.$or = [
+      {
+        _id: search.trim(),
+      },
+      {
+        user: {
+          $in: userIds,
+        },
+      },
+    ];
+  }
+
+  // =====================================
+  // GET ORDERS + TOTAL
+  // =====================================
+
   const [orders, total] = await Promise.all([
-    Booking.find()
-      .populate("user", "name email phone")
+    Booking.find(filter)
+      .populate(
+        "user",
+        "name email phone",
+      )
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
 
-    Booking.countDocuments(),
+    Booking.countDocuments(filter),
   ]);
 
-  const totalPage = Math.ceil(total / limit);
+  // =====================================
+  // TOTAL PAGE
+  // =====================================
+
+  const totalPage = Math.ceil(
+    total / limit,
+  );
 
   return {
     data: orders as unknown as IAdminBooking[],
@@ -731,7 +807,6 @@ const getAllAdminBookings = async ({
     },
   };
 };
-
 
 
 /* ========================================================

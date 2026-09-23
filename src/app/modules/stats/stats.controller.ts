@@ -150,14 +150,18 @@ const getAllAdminBookings = catchAsync(
     );
 
     const limit = Math.min(
-      Math.max(Number(req.query.limit) || 10, 1),
+      Math.max(
+        Number(req.query.limit) || 10,
+        1,
+      ),
       100,
     );
 
-    const result = await StatsService.getAllAdminBookings({
-      page,
-      limit,
-    });
+    const result =
+      await StatsService.getAllAdminBookings({
+        page,
+        limit,
+      });
 
     sentResponse(res, {
       success: true,
@@ -168,7 +172,6 @@ const getAllAdminBookings = catchAsync(
     });
   },
 );
-
 /* =========================================================
    EXPORT
 ========================================================= */
