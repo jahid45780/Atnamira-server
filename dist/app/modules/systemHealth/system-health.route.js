@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.systemHealthRoutes = void 0;
+const express_1 = require("express");
+const system_health_controller_1 = require("./system-health.controller");
+const authCheck_1 = require("../auth/authCheck");
+const user_interface_1 = require("../user/user.interface");
+const router = (0, express_1.Router)();
+router.get("/", (0, authCheck_1.checkAuth)(user_interface_1.Role.ADMIN), system_health_controller_1.systemHealthController.getSystemHealth);
+exports.systemHealthRoutes = router;

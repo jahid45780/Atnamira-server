@@ -5,37 +5,43 @@ import { User } from "../user/user.model";
 import bcrypt  from 'bcrypt';
 
 
-const credentialsLogin = async (payload:Partial<IUser>)=>{
-     const {email, password} = payload;
+const credentialsLogin = async (payload: Partial<IUser>) => {
+  const { email, password } = payload;
 
-     const isUserExist = await User.findOne({email})
-     
-         if(!isUserExist){
-             throw new AppError(400, "email dose not  exist")
-         }
+  const isUserExist = await User.findOne({ email });
 
-           // VERIFY CHECK
-//   if (!isUserExist.IsVerified) {
-//     throw new AppError(401, "User is not verified");
-//   }
+  if (!isUserExist) {
+    throw new AppError(400, "email does not exist");
+  }
 
-   const isPasswordMatched = await bcrypt.compare(password as string, isUserExist.password as string )
-   
-   if(!isPasswordMatched){
-    throw new AppError(400, " incorrect password")
-   }
+  // VERIFY CHECK
+  // if (!isUserExist.IsVerified) {
+  //   throw new AppError(401, "User is not verified");
+  // }
 
-   const {password:pass, ...res} = isUserExist.toObject()
+  const isPasswordMatched = await bcrypt.compare(
+    password as string,
+    isUserExist.password as string
+  );
 
-   const userTokens = createUserToken(isUserExist)
+  if (!isPasswordMatched) {
+    throw new AppError(400, "incorrect password");
+  }
 
-   return {
-    accessToken:userTokens.accessToken,
-    refreshToken:userTokens.refreshToken,
-    user:res
-   }
-}
+  const { password: pass, ...res } = isUserExist.toObject();
 
+  const userTokens = createUserToken({
+    _id: isUserExist._id.toString(),
+    email: isUserExist.email,
+    role: isUserExist.role as string,
+  });
+
+  return {
+    accessToken: userTokens.accessToken,
+    refreshToken: userTokens.refreshToken,
+    user: res,
+  };
+};
 
 export const authService ={
    credentialsLogin
