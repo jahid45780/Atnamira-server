@@ -72,3 +72,74 @@ export const checkAuth =
       next(error);
     }
   };
+
+
+
+
+export const optionalAuth =
+  (...authRoles: string[]) =>
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const accessToken =
+        req.cookies?.AccessToken ||
+        req.headers.authorization?.replace("Bearer ", "");
+
+      // No token means guest.
+      if (!accessToken) {
+        return next();
+      }
+
+      // If a token is provided, it must be valid.
+      const verifiedToken = verifyToken(
+        accessToken,
+        envVers.JWT_ACCESS_SECRET
+      ) as JwtPayload;
+
+      if (
+        !verifiedToken.email ||
+        !verifiedToken.userId ||
+        !verifiedToken.role
+      ) {
+        throw new AppError(401, "Invalid token");
+      }
+
+      const user = await User.findOne({
+        email: verifiedToken.email,
+      });
+
+      if (!user) {
+        throw new AppError(401, "User does not exist");
+      }
+
+      if (
+        user.IsActive === isActive.BLOCKED ||
+        user.IsActive === isActive.INACTIVE
+      ) {
+        throw new AppError(
+          403,
+          `User is ${user.IsActive}`
+        );
+      }
+
+      if (user.IsDeleted) {
+        throw new AppError(403, "User is deleted");
+      }
+
+      if (!authRoles.includes(verifiedToken.role)) {
+        throw new AppError(
+          403,
+          "You are not permitted to access this route"
+        );
+      }
+
+      req.user = {
+        userId: verifiedToken.userId,
+        email: verifiedToken.email,
+        role: verifiedToken.role,
+      };
+
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };

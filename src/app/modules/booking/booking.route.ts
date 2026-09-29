@@ -2,42 +2,51 @@ import { Router } from "express";
 
 import { bookingController } from "./booking.controller";
 
-import { checkAuth } from "../auth/authCheck";
+
+
 import { Role } from "../user/user.interface";
+import { checkAuth, optionalAuth } from "../auth/authCheck";
 
 const router = Router();
 
 
-// ==========================================
-// Create Booking
-// ==========================================
+// ======================================================
+// Checkout
+// Guest + Logged-in User
+// ======================================================
 
 router.post(
-  "/create",
-  checkAuth(...Object.values(Role)),
-  bookingController.createBooking,
+  "/checkout",
+
+  optionalAuth(...Object.values(Role)),
+
+  bookingController.checkout
 );
 
 
-// ==========================================
-// Get My Bookings
-// ==========================================
+// ======================================================
+// Logged-in User Bookings
+// ======================================================
 
 router.get(
   "/my-bookings",
+
   checkAuth(...Object.values(Role)),
-  bookingController.getMyBookings,
+
+  bookingController.getMyBookings
 );
 
 
-// ==========================================
-// Get Single Booking
-// ==========================================
+// ======================================================
+// Logged-in User Booking Details
+// ======================================================
 
 router.get(
   "/:id",
+
   checkAuth(...Object.values(Role)),
-  bookingController.getBookingById,
+
+  bookingController.getBookingById
 );
 
 

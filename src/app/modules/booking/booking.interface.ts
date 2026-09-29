@@ -29,7 +29,10 @@ export interface IShippingAddress {
 }
 
 export interface IBooking {
-  user: Types.ObjectId;
+  user?: Types.ObjectId;
+  guestId?: string;
+
+  email: string;
 
   items: IBookingItem[];
 
@@ -38,13 +41,21 @@ export interface IBooking {
   totalAmount: number;
 
   paymentStatus: PaymentStatus;
-
   bookingStatus: BookingStatus;
 
   stripeSessionId?: string;
-
   stripePaymentIntentId?: string;
 
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+export interface ICreateCheckoutBooking {
+  userId?: string;
+  guestId?: string;
+
+  email: string;
+  name: string;
+  phone: string;
+  address: string;
 }

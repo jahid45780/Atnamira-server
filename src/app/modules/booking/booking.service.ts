@@ -1,363 +1,349 @@
 import mongoose from "mongoose";
 
+
+import AppError from "../../errorHerplrs/appError";
+
 import { Booking } from "./booking.model";
 import {
   BookingStatus,
+  IBookingItem,
+  ICreateCheckoutBooking,
   PaymentStatus,
 } from "./booking.interface";
 
-
-import { Product } from "../product/product.model";
 import { User } from "../user/user.model";
-
+import { Cart } from "../card/cart.model";
 import { stripe } from "../../config/stripe.config";
 import { envVers } from "../../config/env";
-import { Cart } from "../card/cart.model";
-import AppError from "../../errorHerplrs/appError";
 
-
-// ==========================================
-// Create Booking
-// ==========================================
-
-const createBooking = async (
-  userId: string,
+const createCheckoutBooking = async (
+  payload: ICreateCheckoutBooking
 ) => {
-  const session =
-    await mongoose.startSession();
+  const {
+    userId,
+    guestId,
+    email,
+    name,
+    phone,
+    address,
+  } = payload;
 
-  try {
-    session.startTransaction();
+  // --------------------------------------------------
+  // 1. Validate owner
+  // --------------------------------------------------
 
-    // ========================================
-    // 1. Find User
-    // ========================================
+  if (!userId && !guestId) {
+    throw new AppError(
+      400,
+      "Either userId or guestId is required"
+    );
+  }
 
-    const user = await User.findById(userId)
-      .session(session)
-      .lean();
+  if (userId && guestId) {
+    throw new AppError(
+      400,
+      "userId and guestId cannot be used together"
+    );
+  }
+
+  // --------------------------------------------------
+  // 2. Validate checkout information
+  // --------------------------------------------------
+
+  if (!email?.trim()) {
+    throw new AppError(400, "Email is required");
+  }
+
+  if (!name?.trim()) {
+    throw new AppError(400, "Name is required");
+  }
+
+  if (!phone?.trim()) {
+    throw new AppError(400, "Phone is required");
+  }
+
+  if (!address?.trim()) {
+    throw new AppError(400, "Address is required");
+  }
+
+  // --------------------------------------------------
+  // 3. Validate logged-in user
+  // --------------------------------------------------
+
+  if (userId) {
+    const user = await User.findById(userId);
 
     if (!user) {
-      throw new AppError( 404, "User not found");
+      throw new AppError(404, "User not found");
     }
 
-    // ========================================
-    // 2. Check User Information
-    // ========================================
+    if (user.IsDeleted) {
+      throw new AppError(403, "User account is deleted");
+    }
 
-    if (!user.name) {
+    if (!user.IsActive) {
+      throw new AppError(403, "User account is inactive");
+    }
+  }
+
+  // --------------------------------------------------
+  // 4. Find cart
+  // --------------------------------------------------
+
+  const cartQuery = userId
+    ? { user: userId }
+    : { guestId };
+
+  const cart = await Cart.findOne(cartQuery).populate(
+    "items.product"
+  );
+
+  if (!cart) {
+    throw new AppError(404, "Cart not found");
+  }
+
+  if (!cart.items || cart.items.length === 0) {
+    throw new AppError(400, "Your cart is empty");
+  }
+
+  // --------------------------------------------------
+  // 5. Validate products and calculate total
+  // --------------------------------------------------
+
+  const bookingItems: IBookingItem[] = [];
+
+  let totalAmount = 0;
+
+  for (const cartItem of cart.items) {
+    const product = cartItem.product as any;
+
+    if (!product) {
       throw new AppError(
-       400, "Please update your name before booking",
+        404,
+        "One of the products in your cart no longer exists"
       );
     }
 
-    if (!user.phone) {
+    // Product active check
+    if (product.isActive === false) {
       throw new AppError(
-      400,  "Please update your phone number before booking",
+        400,
+        `${product.name} is no longer available`
       );
     }
 
-    if (!user.address) {
+    // Stock check
+    if (product.stock < cartItem.quantity) {
       throw new AppError(
-       400, "Please update your address before booking",
+        400,
+        `${product.name} has only ${product.stock} item(s) in stock`
       );
     }
 
-    // ========================================
-    // 3. Find Cart
-    // ========================================
-
-    const cart = await Cart.findOne({
-      user: userId,
-    })
-      .populate("items.product")
-      .session(session);
-
-    if (!cart) {
-      throw new Error("Cart not found");
+    // Color check
+    if (
+      product.colors?.length &&
+      !product.colors.includes(cartItem.color)
+    ) {
+      throw new AppError(
+        400,
+        `${cartItem.color} is not available for ${product.name}`
+      );
     }
 
-    if (!cart.items.length) {
-      throw new Error("Cart is empty");
+    // Size check
+    if (
+      product.sizes?.length &&
+      !product.sizes.includes(cartItem.size)
+    ) {
+      throw new AppError(
+        400,
+        `${cartItem.size} is not available for ${product.name}`
+      );
     }
 
-    // ========================================
-    // 4. Prepare Booking Items
-    // ========================================
+    const price = Number(product.price);
+    const quantity = Number(cartItem.quantity);
 
-    const bookingItems = [];
+    const subtotal = price * quantity;
 
-    let totalAmount = 0;
+    totalAmount += subtotal;
 
-    for (const cartItem of cart.items) {
-      const product =
-        cartItem.product as unknown as {
-          _id: mongoose.Types.ObjectId;
-          name: string;
-          price: number;
-          stock: number;
-          isActive: boolean;
-          colors: string[];
-          sizes: string[];
-        };
+    bookingItems.push({
+      product: product._id,
+      name: product.name,
+      quantity,
+      price,
+      color: cartItem.color,
+      size: cartItem.size,
+      subtotal,
+    });
+  }
 
-      // Product exists?
-      if (!product) {
-        throw new AppError(
-         400, "Product not found",
-        );
-      }
+  // --------------------------------------------------
+  // 6. Create booking
+  // --------------------------------------------------
 
-      // Product active?
-      if (!product.isActive) {
-        throw new Error(
-          `${product.name} is not available`,
-        );
-      }
+  const booking = await Booking.create({
+    ...(userId
+      ? {
+          user: new mongoose.Types.ObjectId(userId),
+        }
+      : {
+          guestId,
+        }),
 
-      // ======================================
-      // Check Color
-      // ======================================
+    email: email.trim().toLowerCase(),
 
-      if (
-        !product.colors.includes(
-          cartItem.color,
-        )
-      ) {
-        throw new Error(
-          `Color ${cartItem.color} is not available for ${product.name}`,
-        );
-      }
+    items: bookingItems,
 
-      // ======================================
-      // Check Size
-      // ======================================
+    shippingAddress: {
+      name: name.trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+    },
 
-      if (
-        !product.sizes.includes(
-          cartItem.size,
-        )
-      ) {
-        throw new Error(
-          `Size ${cartItem.size} is not available for ${product.name}`,
-        );
-      }
+    totalAmount,
 
-      // ======================================
-      // Check Stock
-      // ======================================
+    paymentStatus: PaymentStatus.PENDING,
 
-      if (
-        product.stock <
-        cartItem.quantity
-      ) {
-        throw new Error(
-          `Not enough stock for ${product.name}`,
-        );
-      }
+    bookingStatus: BookingStatus.PENDING,
+  });
 
-      // ======================================
-      // IMPORTANT
-      // Price comes from database
-      // ======================================
+  // --------------------------------------------------
+  // 7. Create Stripe Checkout Session
+  // --------------------------------------------------
 
-      const price = product.price;
+  try {
+    const lineItems = bookingItems.map((item) => ({
+      price_data: {
+        currency: "usd",
 
-      const subtotal =
-        price * cartItem.quantity;
+        product_data: {
+          name: item.name,
+        },
 
-      totalAmount += subtotal;
+        unit_amount: Math.round(item.price * 100),
+      },
 
-      bookingItems.push({
-        product: product._id,
+      quantity: item.quantity,
+    }));
 
-        name: product.name,
-
-        quantity: cartItem.quantity,
-
-        price,
-
-        color: cartItem.color,
-
-        size: cartItem.size,
-
-        subtotal,
-      });
-    }
-
-    // ========================================
-    // 5. Shipping Address
-    // From User Profile
-    // ========================================
-
-    const shippingAddress = {
-      name: user.name,
-      phone: user.phone,
-      address: user.address,
+    const metadata: Record<string, string> = {
+      bookingId: booking._id.toString(),
+      email: email.trim().toLowerCase(),
     };
 
-    // ========================================
-    // 6. Create Booking
-    // ========================================
+    if (userId) {
+      metadata.userId = userId;
+    }
 
-    const bookingArray =
-      await Booking.create(
-        [
-          {
-            user: userId,
-
-            items: bookingItems,
-
-            shippingAddress,
-
-            totalAmount,
-
-            paymentStatus:
-              PaymentStatus.PENDING,
-
-            bookingStatus:
-              BookingStatus.PENDING,
-          },
-        ],
-        {
-          session,
-        },
-      );
-
-    const booking = bookingArray[0];
-
-    // ========================================
-    // 7. Create Stripe Checkout Session
-    // ========================================
+    if (guestId) {
+      metadata.guestId = guestId;
+    }
 
     const checkoutSession =
-      await stripe.checkout.sessions.create(
-        {
-          mode: "payment",
+      await stripe.checkout.sessions.create({
+        mode: "payment",
 
-          line_items:
-            bookingItems.map((item) => ({
-              price_data: {
-                currency: "usd",
+        customer_email: email.trim().toLowerCase(),
 
-                product_data: {
-                  name: `${item.name} - ${item.color} - ${item.size}`,
-                },
+        line_items: lineItems,
 
-                unit_amount:
-                  Math.round(
-                    item.price * 100,
-                  ),
-              },
+        metadata,
 
-              quantity: item.quantity,
-            })),
-
-          success_url:
-            `${envVers.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-
-          cancel_url:
-            `${envVers.FRONTEND_URL}/payment/cancel`,
-
-          metadata: {
-            bookingId:
-              booking._id.toString(),
-
-            userId,
-          },
+        payment_intent_data: {
+          metadata,
         },
-      );
 
-    // ========================================
-    // 8. Save Stripe Session ID
-    // ========================================
+        success_url:
+          `${envVers.FRONTEND_URL}/payment/success` +
+          `?session_id={CHECKOUT_SESSION_ID}`,
 
-    booking.stripeSessionId =
-      checkoutSession.id;
+        cancel_url:
+          `${envVers.FRONTEND_URL}/payment/cancel`,
 
-    await booking.save({
-      session,
-    });
+      });
 
-    // ========================================
-    // 9. Commit Transaction
-    // ========================================
+    // --------------------------------------------------
+    // 8. Save Stripe information
+    // --------------------------------------------------
 
-    await session.commitTransaction();
+    booking.stripeSessionId = checkoutSession.id;
 
-    // ========================================
-    // 10. Return Data
-    // ========================================
+    if (
+      typeof checkoutSession.payment_intent === "string"
+    ) {
+      booking.stripePaymentIntentId =
+        checkoutSession.payment_intent;
+    }
+
+    await booking.save();
+
+    // --------------------------------------------------
+    // 9. Return checkout information
+    // --------------------------------------------------
 
     return {
-      booking,
+      bookingId: booking._id,
 
-      checkoutUrl:
-        checkoutSession.url,
+      totalAmount: booking.totalAmount,
+
+      paymentStatus: booking.paymentStatus,
+
+      bookingStatus: booking.bookingStatus,
+
+      stripeSessionId: checkoutSession.id,
+
+      checkoutUrl: checkoutSession.url,
     };
   } catch (error) {
-    await session.abortTransaction();
+    // Stripe session failed.
+    // Delete the pending booking because payment session
+    // was never created.
 
-    throw error;
-  } finally {
-    await session.endSession();
+    await Booking.findByIdAndDelete(booking._id);
+
+    throw new AppError(
+      500,
+      "Failed to create Stripe checkout session"
+    );
   }
 };
 
 
-// ==========================================
+// ======================================================
 // Get My Bookings
-// ==========================================
+// ======================================================
 
-const getMyBookings = async (
-  userId: string,
-) => {
-  const bookings =
-    await Booking.find({
-      user: userId,
-    })
-      .populate(
-        "items.product",
-        "name images price",
-      )
-      .sort({
-        createdAt: -1,
-      });
+const getMyBookings = async (userId: string) => {
+  const bookings = await Booking.find({
+    user: userId,
+  })
+    .sort({ createdAt: -1 })
+    .populate("items.product");
 
   return bookings;
 };
 
 
-// ==========================================
-// Get Single Booking
-// ==========================================
+// ======================================================
+// Get Booking By ID
+// ======================================================
 
 const getBookingById = async (
   userId: string,
-  bookingId: string,
+  bookingId: string
 ) => {
-  if (
-    !mongoose.Types.ObjectId.isValid(
-      bookingId,
-    )
-  ) {
-    throw new Error(
-      "Invalid booking ID",
-    );
-  }
-
-  const booking =
-    await Booking.findOne({
-      _id: bookingId,
-      user: userId,
-    }).populate(
-      "items.product",
-      "name images price",
-    );
+  const booking = await Booking.findOne({
+    _id: bookingId,
+    user: userId,
+  }).populate("items.product");
 
   if (!booking) {
-    throw new Error(
-      "Booking not found",
+    throw new AppError(
+      404,
+      "Booking not found"
     );
   }
 
@@ -366,7 +352,7 @@ const getBookingById = async (
 
 
 export const bookingService = {
-  createBooking,
+  createCheckoutBooking,
   getMyBookings,
   getBookingById,
 };
