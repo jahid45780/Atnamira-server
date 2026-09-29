@@ -62,26 +62,35 @@ const shippingAddressSchema = new mongoose_1.Schema({
     _id: false,
 });
 const bookingSchema = new mongoose_1.Schema({
-    // Logged-in user
+    // ==========================================
+    // LOGGED-IN USER
+    // ==========================================
     user: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "User",
         required: false,
         index: true,
     },
-    // Guest user
+    // ==========================================
+    // GUEST USER
+    // ==========================================
     guestId: {
         type: String,
         required: false,
         index: true,
     },
-    // Customer email
+    // ==========================================
+    // CUSTOMER EMAIL
+    // ==========================================
     email: {
         type: String,
         required: true,
         trim: true,
         lowercase: true,
     },
+    // ==========================================
+    // BOOKING ITEMS
+    // ==========================================
     items: {
         type: [bookingItemSchema],
         required: true,
@@ -90,32 +99,50 @@ const bookingSchema = new mongoose_1.Schema({
             message: "Booking must contain at least one item",
         },
     },
+    // ==========================================
+    // SHIPPING ADDRESS
+    // ==========================================
     shippingAddress: {
         type: shippingAddressSchema,
         required: true,
     },
+    // ==========================================
+    // TOTAL AMOUNT
+    // ==========================================
     totalAmount: {
         type: Number,
         required: true,
         min: 0,
     },
+    // ==========================================
+    // PAYMENT STATUS
+    // ==========================================
     paymentStatus: {
         type: String,
         enum: Object.values(booking_interface_1.PaymentStatus),
         default: booking_interface_1.PaymentStatus.PENDING,
         index: true,
     },
+    // ==========================================
+    // BOOKING STATUS
+    // ==========================================
     bookingStatus: {
         type: String,
         enum: Object.values(booking_interface_1.BookingStatus),
         default: booking_interface_1.BookingStatus.PENDING,
         index: true,
     },
+    // ==========================================
+    // STRIPE SESSION ID
+    // ==========================================
     stripeSessionId: {
         type: String,
         unique: true,
         sparse: true,
     },
+    // ==========================================
+    // STRIPE PAYMENT INTENT ID
+    // ==========================================
     stripePaymentIntentId: {
         type: String,
         unique: true,
@@ -123,21 +150,5 @@ const bookingSchema = new mongoose_1.Schema({
     },
 }, {
     timestamps: true,
-});
-/**
- * Booking must belong to either:
- * 1. logged-in user
- * OR
- * 2. guest user
- *
- * Not both.
- */
-bookingSchema.pre("validate", function (next) {
-    const hasUser = Boolean(this.user);
-    const hasGuest = Boolean(this.guestId);
-    if (hasUser === hasGuest) {
-        return next(new Error("Booking must belong to either a user or a guest"));
-    }
-    next();
 });
 exports.Booking = (0, mongoose_1.model)("Booking", bookingSchema);

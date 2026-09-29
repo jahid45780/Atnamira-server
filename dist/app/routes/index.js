@@ -9,6 +9,7 @@ const card_route_1 = require("../modules/card/card.route");
 const booking_route_1 = require("../modules/booking/booking.route");
 const stats_route_1 = require("../modules/stats/stats.route");
 const system_health_route_1 = require("../modules/systemHealth/system-health.route");
+const tracking_route_1 = require("../modules/tracking/tracking.route");
 exports.router = (0, express_1.Router)();
 const moduleRoutes = [
     {
@@ -38,6 +39,10 @@ const moduleRoutes = [
     {
         path: '/system-health',
         route: system_health_route_1.systemHealthRoutes
+    },
+    {
+        path: '/tracking',
+        route: tracking_route_1.trackingRoutes
     },
 ];
 moduleRoutes.forEach((route) => {

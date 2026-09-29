@@ -7,6 +7,8 @@ import { bookingRoutes } from "../modules/booking/booking.route";
 import { statsRoutes } from "../modules/stats/stats.route";
 import { systemHealthRoutes } from "../modules/systemHealth/system-health.route";
 import { trackingRoutes } from "../modules/tracking/tracking.route";
+import { seoRoutes } from "../modules/seo/seo.route";
+import { analyticsRoutes } from "../modules/analytics/analytics.route";
 
   export const  router  = Router()
 
@@ -42,6 +44,14 @@ import { trackingRoutes } from "../modules/tracking/tracking.route";
      {
         path:'/tracking',
         route: trackingRoutes
+    },
+     {
+        path:'/seo',
+        route: seoRoutes
+    },
+      {
+        path:'/analytics',
+        route: analyticsRoutes
     },
 
  ]
