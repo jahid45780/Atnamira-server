@@ -6,6 +6,7 @@ import { cartRoutes } from "../modules/card/card.route";
 import { bookingRoutes } from "../modules/booking/booking.route";
 import { statsRoutes } from "../modules/stats/stats.route";
 import { systemHealthRoutes } from "../modules/systemHealth/system-health.route";
+import { trackingRoutes } from "../modules/tracking/tracking.route";
 
   export const  router  = Router()
 
@@ -37,6 +38,10 @@ import { systemHealthRoutes } from "../modules/systemHealth/system-health.route"
     {
         path:'/system-health',
         route: systemHealthRoutes
+    },
+     {
+        path:'/tracking',
+        route: trackingRoutes
     },
 
  ]

@@ -54,37 +54,41 @@ const bookingItemSchema = new Schema<IBookingItem>(
   },
   {
     _id: false,
-  }
-);
-
-const shippingAddressSchema = new Schema<IShippingAddress>(
-  {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    phone: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    address: {
-      type: String,
-      required: true,
-      trim: true,
-    },
   },
-  {
-    _id: false,
-  }
 );
+
+const shippingAddressSchema =
+  new Schema<IShippingAddress>(
+    {
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      phone: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      address: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+    },
+    {
+      _id: false,
+    },
+  );
 
 const bookingSchema = new Schema<IBooking>(
   {
-    // Logged-in user
+    // ==========================================
+    // LOGGED-IN USER
+    // ==========================================
+
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -92,14 +96,20 @@ const bookingSchema = new Schema<IBooking>(
       index: true,
     },
 
-    // Guest user
+    // ==========================================
+    // GUEST USER
+    // ==========================================
+
     guestId: {
       type: String,
       required: false,
       index: true,
     },
 
-    // Customer email
+    // ==========================================
+    // CUSTOMER EMAIL
+    // ==========================================
+
     email: {
       type: String,
       required: true,
@@ -107,26 +117,45 @@ const bookingSchema = new Schema<IBooking>(
       lowercase: true,
     },
 
+    // ==========================================
+    // BOOKING ITEMS
+    // ==========================================
+
     items: {
       type: [bookingItemSchema],
       required: true,
 
       validate: {
-        validator: (items: IBookingItem[]) => items.length > 0,
-        message: "Booking must contain at least one item",
+        validator: (items: IBookingItem[]) =>
+          items.length > 0,
+
+        message:
+          "Booking must contain at least one item",
       },
     },
+
+    // ==========================================
+    // SHIPPING ADDRESS
+    // ==========================================
 
     shippingAddress: {
       type: shippingAddressSchema,
       required: true,
     },
 
+    // ==========================================
+    // TOTAL AMOUNT
+    // ==========================================
+
     totalAmount: {
       type: Number,
       required: true,
       min: 0,
     },
+
+    // ==========================================
+    // PAYMENT STATUS
+    // ==========================================
 
     paymentStatus: {
       type: String,
@@ -135,6 +164,10 @@ const bookingSchema = new Schema<IBooking>(
       index: true,
     },
 
+    // ==========================================
+    // BOOKING STATUS
+    // ==========================================
+
     bookingStatus: {
       type: String,
       enum: Object.values(BookingStatus),
@@ -142,11 +175,19 @@ const bookingSchema = new Schema<IBooking>(
       index: true,
     },
 
+    // ==========================================
+    // STRIPE SESSION ID
+    // ==========================================
+
     stripeSessionId: {
       type: String,
       unique: true,
       sparse: true,
     },
+
+    // ==========================================
+    // STRIPE PAYMENT INTENT ID
+    // ==========================================
 
     stripePaymentIntentId: {
       type: String,
@@ -154,30 +195,13 @@ const bookingSchema = new Schema<IBooking>(
       sparse: true,
     },
   },
+
   {
     timestamps: true,
-  }
+  },
 );
 
-/**
- * Booking must belong to either:
- * 1. logged-in user
- * OR
- * 2. guest user
- *
- * Not both.
- */
-bookingSchema.pre("validate", function (next:any) {
-  const hasUser = Boolean(this.user);
-  const hasGuest = Boolean(this.guestId);
-
-  if (hasUser === hasGuest) {
-    return next(
-      new Error("Booking must belong to either a user or a guest")
-    );
-  }
-
-  next();
-});
-
-export const Booking = model<IBooking>("Booking", bookingSchema);
+export const Booking = model<IBooking>(
+  "Booking",
+  bookingSchema,
+);

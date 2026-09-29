@@ -3,9 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Booking = void 0;
 const mongoose_1 = require("mongoose");
 const booking_interface_1 = require("./booking.interface");
-// =============================
-// Booking Item Schema
-// =============================
 const bookingItemSchema = new mongoose_1.Schema({
     product: {
         type: mongoose_1.Schema.Types.ObjectId,
@@ -45,9 +42,6 @@ const bookingItemSchema = new mongoose_1.Schema({
 }, {
     _id: false,
 });
-// =============================
-// Shipping Address Schema
-// =============================
 const shippingAddressSchema = new mongoose_1.Schema({
     name: {
         type: String,
@@ -67,15 +61,26 @@ const shippingAddressSchema = new mongoose_1.Schema({
 }, {
     _id: false,
 });
-// =============================
-// Booking Schema
-// =============================
 const bookingSchema = new mongoose_1.Schema({
+    // Logged-in user
     user: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "User",
-        required: true,
+        required: false,
         index: true,
+    },
+    // Guest user
+    guestId: {
+        type: String,
+        required: false,
+        index: true,
+    },
+    // Customer email
+    email: {
+        type: String,
+        required: true,
+        trim: true,
+        lowercase: true,
     },
     items: {
         type: [bookingItemSchema],
@@ -118,5 +123,21 @@ const bookingSchema = new mongoose_1.Schema({
     },
 }, {
     timestamps: true,
+});
+/**
+ * Booking must belong to either:
+ * 1. logged-in user
+ * OR
+ * 2. guest user
+ *
+ * Not both.
+ */
+bookingSchema.pre("validate", function (next) {
+    const hasUser = Boolean(this.user);
+    const hasGuest = Boolean(this.guestId);
+    if (hasUser === hasGuest) {
+        return next(new Error("Booking must belong to either a user or a guest"));
+    }
+    next();
 });
 exports.Booking = (0, mongoose_1.model)("Booking", bookingSchema);

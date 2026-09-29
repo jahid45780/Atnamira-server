@@ -6,297 +6,202 @@ import { stripe } from "../../config/stripe.config";
 
 import { Booking } from "../booking/booking.model";
 import { Product } from "../product/product.model";
+import { Cart } from "../card/cart.model";
 
 import {
   PaymentStatus,
   BookingStatus,
 } from "../booking/booking.interface";
 
-import { paymentService } from "./payment.service";
-import { Cart } from "../card/cart.model";
 
-// ========================================
-// CREATE CHECKOUT SESSION
-// ========================================
-
-const createCheckoutSession = async (
-  req: Request,
-  res: Response,
-) => {
-  try {
-    const { bookingId } = req.body;
-
-    const userId = req.user?.userId;
-
-    // -----------------------------
-    // Check authentication
-    // -----------------------------
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    // -----------------------------
-    // Validate booking ID
-    // -----------------------------
-
-    if (!bookingId) {
-      return res.status(400).json({
-        success: false,
-        message: "Booking ID is required",
-      });
-    }
-
-    // -----------------------------
-    // Find booking
-    // -----------------------------
-
-    const booking = await Booking.findOne({
-      _id: bookingId,
-      user: userId,
-    });
-
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking not found",
-      });
-    }
-
-    // -----------------------------
-    // Already paid check
-    // -----------------------------
-
-    if (
-      booking.paymentStatus ===
-      PaymentStatus.PAID
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Booking is already paid",
-      });
-    }
-
-    // -----------------------------
-    // Create Stripe session
-    // -----------------------------
-
-    const session =
-      await paymentService.createCheckoutSession({
-        bookingId: booking._id.toString(),
-
-        userId: userId.toString(),
-
-        customerEmail:
-          req.user?.email || "",
-
-        totalAmount:
-          booking.totalAmount,
-      });
-
-    // -----------------------------
-    // Save Stripe Session ID
-    // -----------------------------
-
-    booking.stripeSessionId =
-      session.id;
-
-    // -----------------------------
-    // Save Payment Intent ID
-    // -----------------------------
-
-    if (
-      typeof session.payment_intent ===
-      "string"
-    ) {
-      booking.stripePaymentIntentId =
-        session.payment_intent;
-    }
-
-    await booking.save();
-
-    // -----------------------------
-    // Response
-    // -----------------------------
-
-    return res.status(200).json({
-      success: true,
-
-      message:
-        "Checkout session created successfully",
-
-      data: {
-        sessionId: session.id,
-
-        url: session.url,
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Create checkout session error:",
-      error,
-    );
-
-    return res.status(500).json({
-      success: false,
-
-      message:
-        "Failed to create checkout session",
-    });
-  }
-};
-
-// ========================================
+// ======================================================
 // PROCESS SUCCESSFUL PAYMENT
-// ========================================
+// ======================================================
 
 const processSuccessfulPayment = async (
   bookingId: string,
   sessionId?: string,
   paymentIntentId?: string,
 ) => {
-  // --------------------------------------
-  // Find booking
-  // --------------------------------------
+  const mongoSession = await Booking.startSession();
 
-  const booking =
-    await Booking.findById(bookingId);
+  try {
+    mongoSession.startTransaction();
 
-  if (!booking) {
-    console.log(
-      `Booking not found: ${bookingId}`,
-    );
+    // --------------------------------------------------
+    // 1. Find booking
+    // --------------------------------------------------
 
-    return;
-  }
+    const booking = await Booking.findById(
+      bookingId,
+    ).session(mongoSession);
 
-  // --------------------------------------
-  // DUPLICATE PROTECTION
-  // --------------------------------------
-  // If already PAID, do not decrease
-  // stock or clear cart again.
-  // --------------------------------------
+    if (!booking) {
+      console.log(
+        `Booking not found: ${bookingId}`,
+      );
 
-  if (
-    booking.paymentStatus ===
-    PaymentStatus.PAID
-  ) {
-    console.log(
-      `Booking ${bookingId} already processed`,
-    );
+      await mongoSession.abortTransaction();
+      return;
+    }
 
-    return;
-  }
+    // --------------------------------------------------
+    // 2. Already paid protection
+    // --------------------------------------------------
 
-  // --------------------------------------
-  // Validate booking items
-  // --------------------------------------
+    if (
+      booking.paymentStatus ===
+      PaymentStatus.PAID
+    ) {
+      console.log(
+        `Booking ${bookingId} already processed`,
+      );
 
-  if (!booking.items?.length) {
-    console.log(
-      `Booking ${bookingId} has no items`,
-    );
+      await mongoSession.commitTransaction();
+      return;
+    }
 
-    return;
-  }
+    // --------------------------------------------------
+    // 3. Validate booking items
+    // --------------------------------------------------
 
-  // --------------------------------------
-  // Check stock before updating anything
-  // --------------------------------------
-
-  for (const item of booking.items) {
-    const product =
-      await Product.findById(item.product);
-
-    if (!product) {
+    if (
+      !booking.items ||
+      booking.items.length === 0
+    ) {
       throw new Error(
-        `Product not found: ${item.product}`,
+        `Booking ${bookingId} has no items`,
       );
     }
 
-    if (!product.stock || product.stock < item.quantity) {
-      throw new Error(
-        `Insufficient stock for product: ${item.name}`,
+    // --------------------------------------------------
+    // 4. Check and decrease stock atomically
+    // --------------------------------------------------
+
+    for (const item of booking.items) {
+      const updatedProduct =
+        await Product.findOneAndUpdate(
+          {
+            _id: item.product,
+
+            // Important:
+            // only decrease if enough stock exists
+            stock: {
+              $gte: item.quantity,
+            },
+          },
+
+          {
+            $inc: {
+              stock: -item.quantity,
+            },
+          },
+
+          {
+            new: true,
+            session: mongoSession,
+          },
+        );
+
+      if (!updatedProduct) {
+        throw new Error(
+          `Insufficient stock for product: ${item.name}`,
+        );
+      }
+
+      console.log(
+        `Stock decreased: ${item.name} (-${item.quantity})`,
       );
     }
-  }
 
-  // --------------------------------------
-  // Decrease product stock
-  // --------------------------------------
+    // --------------------------------------------------
+    // 5. Update booking
+    // --------------------------------------------------
 
-  for (const item of booking.items) {
-    const product =
-      await Product.findById(item.product);
+    booking.paymentStatus =
+      PaymentStatus.PAID;
 
-    if (!product) {
-      throw new Error(
-        `Product not found: ${item.product}`,
+    booking.bookingStatus =
+      BookingStatus.CONFIRMED;
+
+    if (sessionId) {
+      booking.stripeSessionId =
+        sessionId;
+    }
+
+    if (paymentIntentId) {
+      booking.stripePaymentIntentId =
+        paymentIntentId;
+    }
+
+    await booking.save({
+      session: mongoSession,
+    });
+
+    // --------------------------------------------------
+    // 6. Clear cart
+    // --------------------------------------------------
+
+    if (booking.user) {
+      await Cart.findOneAndUpdate(
+        {
+          user: booking.user,
+        },
+        {
+          $set: {
+            items: [],
+          },
+        },
+        {
+          session: mongoSession,
+        },
+      );
+
+      console.log(
+        `User cart cleared: ${booking.user}`,
+      );
+    } else if (booking.guestId) {
+      await Cart.findOneAndDelete(
+        {
+          guestId: booking.guestId,
+        },
+        {
+          session: mongoSession,
+        },
+      );
+
+      console.log(
+        `Guest cart deleted: ${booking.guestId}`,
       );
     }
 
-    product.stock =
-      product.stock - item.quantity;
+    // --------------------------------------------------
+    // 7. Commit transaction
+    // --------------------------------------------------
 
-    await product.save();
+    await mongoSession.commitTransaction();
 
     console.log(
-      `Stock decreased: ${item.name} (-${item.quantity})`,
+      `Booking ${bookingId} successfully processed`,
     );
+  } catch (error) {
+    await mongoSession.abortTransaction();
+
+    console.error(
+      `Failed to process booking ${bookingId}:`,
+      error,
+    );
+
+    throw error;
+  } finally {
+    await mongoSession.endSession();
   }
-
-  // --------------------------------------
-  // Update booking
-  // --------------------------------------
-
-  booking.paymentStatus =
-    PaymentStatus.PAID;
-
-  booking.bookingStatus =
-    BookingStatus.CONFIRMED;
-
-  if (sessionId) {
-    booking.stripeSessionId =
-      sessionId;
-  }
-
-  if (paymentIntentId) {
-    booking.stripePaymentIntentId =
-      paymentIntentId;
-  }
-
-  await booking.save();
-
-  // --------------------------------------
-  // Clear user's cart
-  // --------------------------------------
-
-  await Cart.findOneAndUpdate(
-    {
-      user: booking.user,
-    },
-    {
-      $set: {
-        items: [],
-      },
-    },
-  );
-
-  console.log(
-    `Cart cleared for user ${booking.user}`,
-  );
-
-  console.log(
-    `Booking ${bookingId} successfully processed`,
-  );
 };
 
-// ========================================
+
+// ======================================================
 // STRIPE WEBHOOK
-// ========================================
+// ======================================================
 
 const handleStripeWebhook = async (
   req: Request,
@@ -305,9 +210,9 @@ const handleStripeWebhook = async (
   const signature =
     req.headers["stripe-signature"];
 
-  // --------------------------------------
-  // Check signature
-  // --------------------------------------
+  // --------------------------------------------------
+  // 1. Check signature
+  // --------------------------------------------------
 
   if (!signature) {
     return res.status(400).send(
@@ -315,14 +220,19 @@ const handleStripeWebhook = async (
     );
   }
 
-  // --------------------------------------
-  // Check webhook secret
-  // --------------------------------------
+  // --------------------------------------------------
+  // 2. Check webhook secret
+  // --------------------------------------------------
 
-  if (
-    !envVers.STRIPE
-      .STRIPE_WEBHOOK_SECRET
-  ) {
+  const webhookSecret =
+    envVers.STRIPE
+      .STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error(
+      "Stripe webhook secret is missing",
+    );
+
     return res.status(500).send(
       "Stripe webhook secret is missing",
     );
@@ -330,17 +240,16 @@ const handleStripeWebhook = async (
 
   let event: Stripe.Event;
 
-  // --------------------------------------
-  // Verify Stripe webhook
-  // --------------------------------------
+  // --------------------------------------------------
+  // 3. Verify Stripe event
+  // --------------------------------------------------
 
   try {
     event =
       stripe.webhooks.constructEvent(
         req.body,
         signature,
-        envVers.STRIPE
-          .STRIPE_WEBHOOK_SECRET,
+        webhookSecret,
       );
   } catch (error) {
     console.error(
@@ -353,39 +262,40 @@ const handleStripeWebhook = async (
     );
   }
 
-  // --------------------------------------
-  // Handle event
-  // --------------------------------------
+  // --------------------------------------------------
+  // 4. Handle Stripe event
+  // --------------------------------------------------
 
   try {
     switch (event.type) {
-      // ==================================
+      // ==============================================
       // CHECKOUT SESSION COMPLETED
-      // ==================================
+      // ==============================================
 
       case "checkout.session.completed": {
         const session =
-          event.data.object as
-            Stripe.Checkout.Session;
+          event.data.object as Stripe.Checkout.Session;
 
         const bookingId =
           session.metadata?.bookingId;
 
         if (!bookingId) {
-          console.log(
-            "Booking ID missing from session metadata",
+          console.error(
+            "Booking ID missing from Checkout Session metadata",
           );
 
           break;
         }
 
         console.log(
-          `Processing checkout.session.completed for ${bookingId}`,
+          `Stripe checkout completed: ${bookingId}`,
         );
 
         await processSuccessfulPayment(
           bookingId,
+
           session.id,
+
           typeof session.payment_intent ===
             "string"
             ? session.payment_intent
@@ -395,20 +305,19 @@ const handleStripeWebhook = async (
         break;
       }
 
-      // ==================================
+      // ==============================================
       // PAYMENT INTENT SUCCEEDED
-      // ==================================
+      // ==============================================
 
       case "payment_intent.succeeded": {
         const paymentIntent =
-          event.data.object as
-            Stripe.PaymentIntent;
+          event.data.object as Stripe.PaymentIntent;
 
         const bookingId =
           paymentIntent.metadata?.bookingId;
 
         if (!bookingId) {
-          console.log(
+          console.error(
             "Booking ID missing from PaymentIntent metadata",
           );
 
@@ -416,7 +325,7 @@ const handleStripeWebhook = async (
         }
 
         console.log(
-          `Processing payment_intent.succeeded for ${bookingId}`,
+          `Stripe payment succeeded: ${bookingId}`,
         );
 
         await processSuccessfulPayment(
@@ -428,21 +337,20 @@ const handleStripeWebhook = async (
         break;
       }
 
-      // ==================================
-      // PAYMENT INTENT FAILED
-      // ==================================
+      // ==============================================
+      // PAYMENT FAILED
+      // ==============================================
 
       case "payment_intent.payment_failed": {
         const paymentIntent =
-          event.data.object as
-            Stripe.PaymentIntent;
+          event.data.object as Stripe.PaymentIntent;
 
         const bookingId =
           paymentIntent.metadata?.bookingId;
 
         if (!bookingId) {
-          console.log(
-            "Booking ID missing from failed PaymentIntent",
+          console.error(
+            "Booking ID missing from failed PaymentIntent metadata",
           );
 
           break;
@@ -454,23 +362,23 @@ const handleStripeWebhook = async (
           );
 
         if (!booking) {
-          console.log(
+          console.error(
             `Booking not found: ${bookingId}`,
           );
 
           break;
         }
 
-        // --------------------------------
-        // Don't overwrite successful payment
-        // --------------------------------
+        // --------------------------------------------
+        // Don't change successful payment
+        // --------------------------------------------
 
         if (
           booking.paymentStatus ===
           PaymentStatus.PAID
         ) {
           console.log(
-            `Booking ${bookingId} already paid`,
+            `Booking ${bookingId} is already paid`,
           );
 
           break;
@@ -482,15 +390,15 @@ const handleStripeWebhook = async (
         await booking.save();
 
         console.log(
-          `Payment failed for booking ${bookingId}`,
+          `Payment failed: ${bookingId}`,
         );
 
         break;
       }
 
-      // ==================================
+      // ==============================================
       // OTHER EVENTS
-      // ==================================
+      // ==============================================
 
       default: {
         console.log(
@@ -499,9 +407,9 @@ const handleStripeWebhook = async (
       }
     }
 
-    // --------------------------------------
-    // Stripe success response
-    // --------------------------------------
+    // --------------------------------------------------
+    // Stripe requires successful response
+    // --------------------------------------------------
 
     return res.status(200).json({
       received: true,
@@ -514,18 +422,17 @@ const handleStripeWebhook = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Webhook processing failed",
     });
   }
 };
 
-// ========================================
+
+// ======================================================
 // EXPORT
-// ========================================
+// ======================================================
 
 export const paymentController = {
-  createCheckoutSession,
   handleStripeWebhook,
 };

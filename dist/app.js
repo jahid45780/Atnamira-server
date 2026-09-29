@@ -15,60 +15,62 @@ const env_1 = require("./app/config/env");
 require("./app/config/passport");
 const payment_controller_1 = require("./app/modules/payment/payment.controller");
 const app = (0, express_1.default)();
-/* ================================s
-   Session
-================================ */
+// ======================================================
+// SESSION
+// ======================================================
 app.use((0, express_session_1.default)({
     secret: env_1.envVers.EXPRESS_SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
 }));
-/* ================================
-   CORS
-================================ */
+// ======================================================
+// CORS
+// ======================================================
 app.use((0, cors_1.default)({
     origin: env_1.envVers.FRONTEND_URL,
     credentials: true,
 }));
-/* ================================
-   Stripe Webhook
-   MUST BE BEFORE express.json()
-================================ */
+// ======================================================
+// STRIPE WEBHOOK
+//
+// IMPORTANT:
+// This MUST come before express.json()
+// ======================================================
 app.use("/api/v1/payment/webhook", express_1.default.raw({
     type: "application/json",
 }), payment_controller_1.paymentController.handleStripeWebhook);
-/* ================================
-   Body Parsers
-================================ */
+// ======================================================
+// BODY PARSERS
+// ======================================================
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({
     extended: true,
 }));
-/* ================================
-   Cookie
-================================ */
+// ======================================================
+// COOKIE
+// ======================================================
 app.use((0, cookie_parser_1.default)());
-/* ================================
-   Passport
-================================ */
+// ======================================================
+// PASSPORT
+// ======================================================
 app.use(passport_1.default.initialize());
 app.use(passport_1.default.session());
-/* ================================
-   API Routes
-================================ */
+// ======================================================
+// API ROUTES
+// ======================================================
 app.use("/api/v1", routes_1.router);
-/* ================================
-   Root Route
-================================ */
+// ======================================================
+// ROOT ROUTE
+// ======================================================
 app.get("/", (req, res) => {
     res.status(200).json({
         success: true,
         message: "Welcome to the Atnamira server",
     });
 });
-/* ================================
-   Error Handler
-================================ */
+// ======================================================
+// ERROR HANDLER
+// ======================================================
 app.use(globalErrorHandler_1.globalErrorHandler);
 app.use(NotFound_1.default);
 exports.default = app;

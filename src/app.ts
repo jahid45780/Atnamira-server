@@ -1,59 +1,78 @@
-import express, { Request, Response } from "express";
+import express, {
+  Request,
+  Response,
+} from "express";
+
 import cors from "cors";
 import passport from "passport";
 import cookieParser from "cookie-parser";
 import expressSession from "express-session";
 
 import { router } from "./app/routes";
+
 import { globalErrorHandler } from "./app/middleware/globalErrorHandler";
 import NotFound from "./app/middleware/NotFound";
+
 import { envVers } from "./app/config/env";
 
 import "./app/config/passport";
 
 import { paymentController } from "./app/modules/payment/payment.controller";
 
+
 const app = express();
 
-/* ================================s
-   Session
-================================ */
+
+// ======================================================
+// SESSION
+// ======================================================
 
 app.use(
   expressSession({
-    secret: envVers.EXPRESS_SESSION_SECRET,
+    secret:
+      envVers.EXPRESS_SESSION_SECRET,
+
     resave: false,
+
     saveUninitialized: false,
   }),
 );
 
-/* ================================
-   CORS
-================================ */
+
+// ======================================================
+// CORS
+// ======================================================
 
 app.use(
   cors({
     origin: envVers.FRONTEND_URL,
+
     credentials: true,
   }),
 );
 
-/* ================================
-   Stripe Webhook
-   MUST BE BEFORE express.json()
-================================ */
+
+// ======================================================
+// STRIPE WEBHOOK
+//
+// IMPORTANT:
+// This MUST come before express.json()
+// ======================================================
 
 app.use(
   "/api/v1/payment/webhook",
+
   express.raw({
     type: "application/json",
   }),
+
   paymentController.handleStripeWebhook,
 );
 
-/* ================================
-   Body Parsers
-================================ */
+
+// ======================================================
+// BODY PARSERS
+// ======================================================
 
 app.use(express.json());
 
@@ -63,42 +82,57 @@ app.use(
   }),
 );
 
-/* ================================
-   Cookie
-================================ */
+
+// ======================================================
+// COOKIE
+// ======================================================
 
 app.use(cookieParser());
 
-/* ================================
-   Passport
-================================ */
+
+// ======================================================
+// PASSPORT
+// ======================================================
 
 app.use(passport.initialize());
+
 app.use(passport.session());
 
-/* ================================
-   API Routes
-================================ */
 
-app.use("/api/v1", router);
+// ======================================================
+// API ROUTES
+// ======================================================
 
-/* ================================
-   Root Route
-================================ */
+app.use(
+  "/api/v1",
+  router,
+);
 
-app.get("/", (req: Request, res: Response) => {
-  res.status(200).json({
-    success: true,
-    message: "Welcome to the Atnamira server",
-  });
-});
 
-/* ================================
-   Error Handler
-================================ */
+// ======================================================
+// ROOT ROUTE
+// ======================================================
+
+app.get(
+  "/",
+  (req: Request, res: Response) => {
+    res.status(200).json({
+      success: true,
+
+      message:
+        "Welcome to the Atnamira server",
+    });
+  },
+);
+
+
+// ======================================================
+// ERROR HANDLER
+// ======================================================
 
 app.use(globalErrorHandler);
 
 app.use(NotFound);
+
 
 export default app;

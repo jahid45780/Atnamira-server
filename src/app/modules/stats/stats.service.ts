@@ -3,822 +3,215 @@ import {
   BookingStatus,
   PaymentStatus,
 } from "../booking/booking.interface";
-
 import { Product } from "../product/product.model";
-
-import {  isActive } from "../user/user.interface";
 import { User } from "../user/user.model";
 
-import {
-  IAdminBooking,
-  IBookingStats,
-  IGetOrdersParams,
-  IGetOrdersResult,
-  IPaymentStats,
-  IProductStats,
-  IUserOverviewStats,
-  IUserStats,
-} from "./stats.interface";
-
-/* =========================================================
-   DATE
-========================================================= */
-
-const now = new Date();
-
-const sevenDaysAgo = new Date(now);
-sevenDaysAgo.setDate(
-  sevenDaysAgo.getDate() - 7,
-);
-
-const thirtyDaysAgo = new Date(now);
-thirtyDaysAgo.setDate(
-  thirtyDaysAgo.getDate() - 30,
-);
-
-/* =========================================================
-   USER DASHBOARD
-   Logged-in user only
-========================================================= */
-
-const getUserStats = async (
-  userId: string,
-): Promise<IUserStats> => {
-  /* =========================
-     GET USER BOOKINGS
-  ========================= */
-
-  const bookings = await Booking.find({
-    user: userId,
-  })
-    .sort({
-      createdAt: -1,
-    })
-    .lean();
-
-  /* =========================
-     BOOKING COUNTS
-  ========================= */
-
-  const totalBookings = bookings.length;
-
-  const pendingBookings = bookings.filter(
-    (booking) =>
-      booking.bookingStatus ===
-      BookingStatus.PENDING,
-  ).length;
-
-  const confirmedBookings = bookings.filter(
-    (booking) =>
-      booking.bookingStatus ===
-      BookingStatus.CONFIRMED,
-  ).length;
-
-  const cancelledBookings = bookings.filter(
-    (booking) =>
-      booking.bookingStatus ===
-      BookingStatus.CANCELLED,
-  ).length;
-
-  /* =========================
-     TOTAL SPENT
-
-     Only PAID bookings
-  ========================= */
-
-  const totalSpent = bookings
-    .filter(
-      (booking) =>
-        booking.paymentStatus ===
-        PaymentStatus.PAID,
-    )
-    .reduce(
-      (total, booking) =>
-        total + booking.totalAmount,
-      0,
-    );
-
-  /* =========================
-     PAYMENT COUNTS
-  ========================= */
-
-  const paid = bookings.filter(
-    (booking) =>
-      booking.paymentStatus ===
-      PaymentStatus.PAID,
-  ).length;
-
-  const pending = bookings.filter(
-    (booking) =>
-      booking.paymentStatus ===
-      PaymentStatus.PENDING,
-  ).length;
-
-  const failed = bookings.filter(
-    (booking) =>
-      booking.paymentStatus ===
-      PaymentStatus.FAILED,
-  ).length;
-
-  /* =========================
-     ALL USER BOOKINGS
-  ========================= */
-
-  const userBookings = bookings.map(
-    (booking) => ({
-      _id: booking._id,
-
-      totalAmount: booking.totalAmount,
-
-      paymentStatus:
-        booking.paymentStatus,
-
-      bookingStatus:
-        booking.bookingStatus,
-
-      items: booking.items,
-
-      shippingAddress:
-        booking.shippingAddress,
-
-      stripeSessionId:
-        booking.stripeSessionId,
-
-      createdAt:
-        booking.createdAt,
+const getAdminStats = async () => {
+  const [
+    totalUsers,
+    totalProducts,
+    totalBookings,
+    pendingBookings,
+    confirmedBookings,
+    cancelledBookings,
+    paidOrders,
+    pendingPayments,
+    failedPayments,
+    revenueResult,
+    recentBookings,
+    recentUsers,
+    monthlyStats,
+  ] = await Promise.all([
+    User.countDocuments(),
+    Product.countDocuments(),
+    Booking.countDocuments(),
+    Booking.countDocuments({
+      bookingStatus: BookingStatus.PENDING,
     }),
-  );
-
-  /* =========================
-     PRODUCT HISTORY
-
-     Which product user bought
-     and how many times
-  ========================= */
-
-  const productHistory =
-    await Booking.aggregate([
+    Booking.countDocuments({
+      bookingStatus: BookingStatus.CONFIRMED,
+    }),
+    Booking.countDocuments({
+      bookingStatus: BookingStatus.CANCELLED,
+    }),
+    Booking.countDocuments({
+      paymentStatus: PaymentStatus.PAID,
+    }),
+    Booking.countDocuments({
+      paymentStatus: PaymentStatus.PENDING,
+    }),
+    Booking.countDocuments({
+      paymentStatus: PaymentStatus.FAILED,
+    }),
+    Booking.aggregate([
       {
         $match: {
-          user: bookings[0]?.user,
-          paymentStatus:
-            PaymentStatus.PAID,
+          paymentStatus: PaymentStatus.PAID,
         },
       },
-
-      {
-        $unwind: "$items",
-      },
-
       {
         $group: {
-          _id: "$items.product",
-
-          productName: {
-            $first: "$items.name",
-          },
-
-          totalQuantity: {
-            $sum: "$items.quantity",
-          },
-
-          totalSpent: {
-            $sum: "$items.subtotal",
+          _id: null,
+          total: { $sum: "$totalAmount" },
+        },
+      },
+    ]),
+    Booking.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("email items totalAmount paymentStatus bookingStatus createdAt")
+      .lean(),
+    User.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("name email role createdAt")
+      .lean(),
+    Booking.aggregate([
+      {
+        $match: {
+          paymentStatus: PaymentStatus.PAID,
+          createdAt: {
+            $gte: new Date(
+              new Date().getFullYear(),
+              new Date().getMonth() - 5,
+              1,
+            ),
           },
         },
       },
-
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+          },
+          orders: { $sum: 1 },
+          revenue: { $sum: "$totalAmount" },
+        },
+      },
       {
         $sort: {
-          totalQuantity: -1,
+          "_id.year": 1,
+          "_id.month": 1,
         },
       },
-
-      {
-        $project: {
-          _id: 1,
-
-          productName: 1,
-
-          totalQuantity: 1,
-
-          totalSpent: 1,
-        },
-      },
-    ]);
-
-  return {
-    totalBookings,
-
-    pendingBookings,
-
-    confirmedBookings,
-
-    cancelledBookings,
-
-    totalSpent,
-
-    payments: {
-      paid,
-      pending,
-      failed,
-    },
-
-    bookings: userBookings,
-
-    productHistory,
-  };
-};
-
-/* =========================================================
-   ADMIN - USER OVERVIEW
-========================================================= */
-
-const getUserOverviewStats =
-  async (): Promise<IUserOverviewStats> => {
-    /* =========================
-       USER COUNTS
-    ========================= */
-
-    const totalUsersPromise =
-      User.countDocuments();
-
-    const totalActiveUsersPromise =
-      User.countDocuments({
-        IsActive: isActive.ACTIVE,
-      });
-
-    const totalInactiveUsersPromise =
-      User.countDocuments({
-        IsActive: isActive.INACTIVE,
-      });
-
-    const totalBlockedUsersPromise =
-      User.countDocuments({
-        IsActive: isActive.BLOCKED,
-      });
-
-    /* =========================
-       NEW USERS
-    ========================= */
-
-    const newUsersLast7DaysPromise =
-      User.countDocuments({
-        createdAt: {
-          $gte: sevenDaysAgo,
-        },
-      });
-
-    const newUsersLast30DaysPromise =
-      User.countDocuments({
-        createdAt: {
-          $gte: thirtyDaysAgo,
-        },
-      });
-
-    /* =========================
-       USERS BY ROLE
-    ========================= */
-
-    const usersByRolePromise =
-      User.aggregate([
-        {
-          $group: {
-            _id: "$role",
-
-            count: {
-              $sum: 1,
-            },
-          },
-        },
-
-        {
-          $sort: {
-            count: -1,
-          },
-        },
-      ]);
-
-    const [
-      totalUsers,
-      totalActiveUsers,
-      totalInactiveUsers,
-      totalBlockedUsers,
-      newUsersLast7Days,
-      newUsersLast30Days,
-      usersByRole,
-    ] = await Promise.all([
-      totalUsersPromise,
-      totalActiveUsersPromise,
-      totalInactiveUsersPromise,
-      totalBlockedUsersPromise,
-      newUsersLast7DaysPromise,
-      newUsersLast30DaysPromise,
-      usersByRolePromise,
-    ]);
-
-    return {
-      totalUsers,
-
-      totalActiveUsers,
-
-      totalInactiveUsers,
-
-      totalBlockedUsers,
-
-      newUsersLast7Days,
-
-      newUsersLast30Days,
-
-      usersByRole,
-    };
-  };
-
-/* =========================================================
-   ADMIN - PRODUCT STATS
-========================================================= */
-
-const getProductStats =
-  async (): Promise<IProductStats> => {
-    const [
-      totalProducts,
-      activeProducts,
-      inactiveProducts,
-      outOfStockProducts,
-      lowStockProducts,
-      totalStockResult,
-      productsByCategory,
-      topProducts,
-    ] = await Promise.all([
-      /* Total */
-
-      Product.countDocuments(),
-
-      /* Active */
-
-      Product.countDocuments({
-        isActive: true,
-      }),
-
-      /* Inactive */
-
-      Product.countDocuments({
-        isActive: false,
-      }),
-
-      /* Out of stock */
-
-      Product.countDocuments({
-        stock: 0,
-      }),
-
-      /* Low stock */
-
-      Product.countDocuments({
-        stock: {
-          $gt: 0,
-          $lte: 5,
-        },
-      }),
-
-      /* Total stock */
-
-      Product.aggregate([
-        {
-          $group: {
-            _id: null,
-
-            totalStock: {
-              $sum: "$stock",
-            },
-          },
-        },
-      ]),
-
-      /* Category */
-
-      Product.aggregate([
-        {
-          $group: {
-            _id: "$category",
-
-            count: {
-              $sum: 1,
-            },
-          },
-        },
-
-        {
-          $sort: {
-            count: -1,
-          },
-        },
-      ]),
-
-      /* Top rated products */
-
-      Product.find({
-        isActive: true,
-      })
-        .select(
-          "name slug price rating reviews stock images.main",
-        )
-        .sort({
-          rating: -1,
-          reviews: -1,
-        })
-        .limit(5)
-        .lean(),
-    ]);
-
-    const totalStock =
-      totalStockResult[0]?.totalStock ?? 0;
-
-    return {
-      totalProducts,
-
-      activeProducts,
-
-      inactiveProducts,
-
-      outOfStockProducts,
-
-      lowStockProducts,
-
-      totalStock,
-
-      productsByCategory,
-
-      topProducts,
-    };
-  };
-
-/* =========================================================
-   ADMIN - BOOKING STATS
-========================================================= */
-
-const getBookingStats =
-  async (): Promise<IBookingStats> => {
-    const [
-      totalBookings,
-      pendingBookings,
-      confirmedBookings,
-      cancelledBookings,
-      bookingsLast7Days,
-      bookingsLast30Days,
-      uniqueCustomers,
-      bookingsByStatus,
-      recentBookings,
-    ] = await Promise.all([
-      /* Total */
-
-      Booking.countDocuments(),
-
-      /* Pending */
-
-      Booking.countDocuments({
-        bookingStatus:
-          BookingStatus.PENDING,
-      }),
-
-      /* Confirmed */
-
-      Booking.countDocuments({
-        bookingStatus:
-          BookingStatus.CONFIRMED,
-      }),
-
-      /* Cancelled */
-
-      Booking.countDocuments({
-        bookingStatus:
-          BookingStatus.CANCELLED,
-      }),
-
-      /* Last 7 days */
-
-      Booking.countDocuments({
-        createdAt: {
-          $gte: sevenDaysAgo,
-        },
-      }),
-
-      /* Last 30 days */
-
-      Booking.countDocuments({
-        createdAt: {
-          $gte: thirtyDaysAgo,
-        },
-      }),
-
-      /* Unique customers */
-
-      Booking.distinct("user").then(
-        (users) => users.length,
-      ),
-
-      /* Status */
-
-      Booking.aggregate([
-        {
-          $group: {
-            _id: "$bookingStatus",
-
-            count: {
-              $sum: 1,
-            },
-          },
-        },
-
-        {
-          $sort: {
-            count: -1,
-          },
-        },
-      ]),
-
-      /* Recent */
-
-      Booking.find()
-        .populate(
-          "user",
-          "name email phone",
-        )
-        .sort({
-          createdAt: -1,
-        })
-        .limit(5)
-        .lean(),
-    ]);
-
-    return {
-      totalBookings,
-
-      pendingBookings,
-
-      confirmedBookings,
-
-      cancelledBookings,
-
-      bookingsLast7Days,
-
-      bookingsLast30Days,
-
-      uniqueCustomers,
-
-      bookingsByStatus,
-
-      recentBookings,
-    };
-  };
-
-/* =========================================================
-   ADMIN - PAYMENT STATS
-========================================================= */
-
-const getPaymentStats =
-  async (): Promise<IPaymentStats> => {
-    const [
-      totalPayments,
-      paidPayments,
-      pendingPayments,
-      failedPayments,
-      paymentsByStatus,
-      revenueResult,
-      averagePaymentResult,
-    ] = await Promise.all([
-      /* Total */
-
-      Booking.countDocuments(),
-
-      /* Paid */
-
-      Booking.countDocuments({
-        paymentStatus:
-          PaymentStatus.PAID,
-      }),
-
-      /* Pending */
-
-      Booking.countDocuments({
-        paymentStatus:
-          PaymentStatus.PENDING,
-      }),
-
-      /* Failed */
-
-      Booking.countDocuments({
-        paymentStatus:
-          PaymentStatus.FAILED,
-      }),
-
-      /* Payment status */
-
-      Booking.aggregate([
-        {
-          $group: {
-            _id: "$paymentStatus",
-
-            count: {
-              $sum: 1,
-            },
-          },
-        },
-
-        {
-          $sort: {
-            count: -1,
-          },
-        },
-      ]),
-
-      /* Revenue */
-
-      Booking.aggregate([
-        {
-          $match: {
-            paymentStatus:
-              PaymentStatus.PAID,
-          },
-        },
-
-        {
-          $group: {
-            _id: null,
-
-            totalRevenue: {
-              $sum: "$totalAmount",
-            },
-          },
-        },
-      ]),
-
-      /* Average payment */
-
-      Booking.aggregate([
-        {
-          $match: {
-            paymentStatus:
-              PaymentStatus.PAID,
-          },
-        },
-
-        {
-          $group: {
-            _id: null,
-
-            averagePaymentAmount: {
-              $avg: "$totalAmount",
-            },
-          },
-        },
-      ]),
-    ]);
-
-    const totalRevenue =
-      revenueResult[0]?.totalRevenue ?? 0;
-
-    const averagePaymentAmount =
-      averagePaymentResult[0]
-        ?.averagePaymentAmount ?? 0;
-
-    return {
-      totalPayments,
-
-      paidPayments,
-
-      pendingPayments,
-
-      failedPayments,
-
-      totalRevenue,
-
-      averagePaymentAmount,
-
-      paymentsByStatus,
-    };
-  };
-
-
-
-const getAllAdminBookings = async ({
-  page,
-  limit,
-  search,
-  paymentStatus,
-  bookingStatus,
-}: IGetOrdersParams): Promise<IGetOrdersResult> => {
-  const skip = (page - 1) * limit;
-
-  const filter: Record<string, any> = {};
-
-  // =====================================
-  // PAYMENT STATUS FILTER
-  // =====================================
-
-  if (
-    paymentStatus &&
-    paymentStatus !== "ALL"
-  ) {
-    filter.paymentStatus = paymentStatus;
-  }
-
-  // =====================================
-  // BOOKING STATUS FILTER
-  // =====================================
-
-  if (
-    bookingStatus &&
-    bookingStatus !== "ALL"
-  ) {
-    filter.bookingStatus = bookingStatus;
-  }
-
-  // =====================================
-  // SEARCH
-  // =====================================
-
-  if (search?.trim()) {
-    const searchRegex = {
-      $regex: search.trim(),
-      $options: "i",
-    };
-
-    const users = await User.find({
-      $or: [
-        { name: searchRegex },
-        { email: searchRegex },
-        { phone: searchRegex },
-      ],
-    })
-      .select("_id")
-      .lean();
-
-    const userIds = users.map(
-      (user) => user._id,
-    );
-
-    filter.$or = [
-      {
-        _id: search.trim(),
-      },
-      {
-        user: {
-          $in: userIds,
-        },
-      },
-    ];
-  }
-
-  // =====================================
-  // GET ORDERS + TOTAL
-  // =====================================
-
-  const [orders, total] = await Promise.all([
-    Booking.find(filter)
-      .populate(
-        "user",
-        "name email phone",
-      )
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-
-    Booking.countDocuments(filter),
+    ]),
   ]);
 
-  // =====================================
-  // TOTAL PAGE
-  // =====================================
+  const monthNames = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
 
-  const totalPage = Math.ceil(
-    total / limit,
+  const monthlyMap = new Map(
+    monthlyStats.map((item) => [
+      `${item._id.year}-${item._id.month}`,
+      item,
+    ]),
   );
 
-  return {
-    data: orders as unknown as IAdminBooking[],
+  const now = new Date();
 
-    meta: {
-      page,
-      limit,
-      total,
-      totalPage,
-    },
+  const lastSixMonths = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(
+      now.getFullYear(),
+      now.getMonth() - 5 + index,
+      1,
+    );
+
+    const key = `${date.getFullYear()}-${date.getMonth() + 1}`;
+    const found = monthlyMap.get(key);
+
+    return {
+      month: monthNames[date.getMonth()],
+      orders: found?.orders ?? 0,
+      revenue: found?.revenue ?? 0,
+    };
+  });
+
+  return {
+    totalUsers,
+    totalProducts,
+    totalBookings,
+    pendingBookings,
+    confirmedBookings,
+    cancelledBookings,
+    paidOrders,
+    pendingPayments,
+    failedPayments,
+    totalRevenue: revenueResult[0]?.total ?? 0,
+    recentBookings,
+    recentUsers,
+    monthlyStats: lastSixMonths,
   };
 };
 
+const getUserStats = async (userId: string) => {
+  const [
+    totalOrders,
+    pendingOrders,
+    confirmedOrders,
+    cancelledOrders,
+    paidOrders,
+    pendingPayments,
+    spentResult,
+    recentOrders,
+  ] = await Promise.all([
+    Booking.countDocuments({ user: userId }),
+    Booking.countDocuments({
+      user: userId,
+      bookingStatus: BookingStatus.PENDING,
+    }),
+    Booking.countDocuments({
+      user: userId,
+      bookingStatus: BookingStatus.CONFIRMED,
+    }),
+    Booking.countDocuments({
+      user: userId,
+      bookingStatus: BookingStatus.CANCELLED,
+    }),
+    Booking.countDocuments({
+      user: userId,
+      paymentStatus: PaymentStatus.PAID,
+    }),
+    Booking.countDocuments({
+      user: userId,
+      paymentStatus: PaymentStatus.PENDING,
+    }),
+    Booking.aggregate([
+      {
+        $match: {
+          user: new (await import("mongoose")).Types.ObjectId(userId),
+          paymentStatus: PaymentStatus.PAID,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$totalAmount" },
+        },
+      },
+    ]),
+    Booking.find({ user: userId })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("items totalAmount paymentStatus bookingStatus createdAt")
+      .lean(),
+  ]);
 
-/* ========================================================
-   EXPORT
-========================================================= */
+  return {
+    totalOrders,
+    pendingOrders,
+    confirmedOrders,
+    cancelledOrders,
+    paidOrders,
+    pendingPayments,
+    totalSpent: spentResult[0]?.total ?? 0,
+    recentOrders,
+  };
+};
 
-export const StatsService = {
+export const statsService = {
+  getAdminStats,
   getUserStats,
-  getUserOverviewStats,
-  getProductStats,
-  getBookingStats,
-  getPaymentStats,
-  getAllAdminBookings,
- 
 };
