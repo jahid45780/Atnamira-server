@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.seoRoutes = void 0;
+const express_1 = require("express");
+const seo_controller_1 = require("./seo.controller");
+const user_interface_1 = require("../user/user.interface");
+const authCheck_1 = require("../auth/authCheck");
+const router = (0, express_1.Router)();
+router.post("/audit", (0, authCheck_1.checkAuth)(user_interface_1.Role.ADMIN), seo_controller_1.seoController.auditPage);
+exports.seoRoutes = router;

@@ -10,6 +10,8 @@ const booking_route_1 = require("../modules/booking/booking.route");
 const stats_route_1 = require("../modules/stats/stats.route");
 const system_health_route_1 = require("../modules/systemHealth/system-health.route");
 const tracking_route_1 = require("../modules/tracking/tracking.route");
+const seo_route_1 = require("../modules/seo/seo.route");
+const analytics_route_1 = require("../modules/analytics/analytics.route");
 exports.router = (0, express_1.Router)();
 const moduleRoutes = [
     {
@@ -43,6 +45,14 @@ const moduleRoutes = [
     {
         path: '/tracking',
         route: tracking_route_1.trackingRoutes
+    },
+    {
+        path: '/seo',
+        route: seo_route_1.seoRoutes
+    },
+    {
+        path: '/analytics',
+        route: analytics_route_1.analyticsRoutes
     },
 ];
 moduleRoutes.forEach((route) => {

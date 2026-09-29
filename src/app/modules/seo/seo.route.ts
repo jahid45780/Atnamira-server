@@ -1,6 +1,8 @@
 
 import { Router } from "express";
+
 import { seoController } from "./seo.controller";
+
 import { Role } from "../user/user.interface";
 import { checkAuth } from "../auth/authCheck";
 
@@ -12,4 +14,6 @@ router.post(
   seoController.auditPage,
 );
 
-export const seoRoutes = router;
+export const seoRoutes =
+  router;
+

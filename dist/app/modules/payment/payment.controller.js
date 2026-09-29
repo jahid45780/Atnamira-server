@@ -15,7 +15,29 @@ const stripe_config_1 = require("../../config/stripe.config");
 const booking_model_1 = require("../booking/booking.model");
 const product_model_1 = require("../product/product.model");
 const cart_model_1 = require("../card/cart.model");
+const analytics_service_1 = require("../analytics/analytics.service");
 const booking_interface_1 = require("../booking/booking.interface");
+// ======================================================
+// RECORD VERIFIED PURCHASE ANALYTICS
+// ======================================================
+const recordPurchaseAnalytics = (booking) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        yield analytics_service_1.analyticsService.createVerifiedPurchaseEvent({
+            bookingId: booking._id.toString(),
+            userId: booking.user
+                ? booking.user.toString()
+                : undefined,
+            guestId: booking.guestId,
+            totalAmount: booking.totalAmount,
+            currency: "USD",
+        });
+        console.log(`Purchase analytics recorded: ${booking._id}`);
+    }
+    catch (error) {
+        // Analytics failure must not fail a successful payment.
+        console.error(`Purchase analytics failed for booking ${booking._id}:`, error);
+    }
+});
 // ======================================================
 // PROCESS SUCCESSFUL PAYMENT
 // ======================================================
@@ -23,39 +45,29 @@ const processSuccessfulPayment = (bookingId, sessionId, paymentIntentId) => __aw
     const mongoSession = yield booking_model_1.Booking.startSession();
     try {
         mongoSession.startTransaction();
-        // --------------------------------------------------
         // 1. Find booking
-        // --------------------------------------------------
         const booking = yield booking_model_1.Booking.findById(bookingId).session(mongoSession);
         if (!booking) {
             console.log(`Booking not found: ${bookingId}`);
             yield mongoSession.abortTransaction();
             return;
         }
-        // --------------------------------------------------
         // 2. Already paid protection
-        // --------------------------------------------------
-        if (booking.paymentStatus ===
-            booking_interface_1.PaymentStatus.PAID) {
+        if (booking.paymentStatus === booking_interface_1.PaymentStatus.PAID) {
             console.log(`Booking ${bookingId} already processed`);
             yield mongoSession.commitTransaction();
+            // Retry can repair a missing purchase event.
+            yield recordPurchaseAnalytics(booking);
             return;
         }
-        // --------------------------------------------------
         // 3. Validate booking items
-        // --------------------------------------------------
-        if (!booking.items ||
-            booking.items.length === 0) {
+        if (!booking.items || booking.items.length === 0) {
             throw new Error(`Booking ${bookingId} has no items`);
         }
-        // --------------------------------------------------
         // 4. Check and decrease stock atomically
-        // --------------------------------------------------
         for (const item of booking.items) {
             const updatedProduct = yield product_model_1.Product.findOneAndUpdate({
                 _id: item.product,
-                // Important:
-                // only decrease if enough stock exists
                 stock: {
                     $gte: item.quantity,
                 },
@@ -72,27 +84,19 @@ const processSuccessfulPayment = (bookingId, sessionId, paymentIntentId) => __aw
             }
             console.log(`Stock decreased: ${item.name} (-${item.quantity})`);
         }
-        // --------------------------------------------------
         // 5. Update booking
-        // --------------------------------------------------
-        booking.paymentStatus =
-            booking_interface_1.PaymentStatus.PAID;
-        booking.bookingStatus =
-            booking_interface_1.BookingStatus.CONFIRMED;
+        booking.paymentStatus = booking_interface_1.PaymentStatus.PAID;
+        booking.bookingStatus = booking_interface_1.BookingStatus.CONFIRMED;
         if (sessionId) {
-            booking.stripeSessionId =
-                sessionId;
+            booking.stripeSessionId = sessionId;
         }
         if (paymentIntentId) {
-            booking.stripePaymentIntentId =
-                paymentIntentId;
+            booking.stripePaymentIntentId = paymentIntentId;
         }
         yield booking.save({
             session: mongoSession,
         });
-        // --------------------------------------------------
         // 6. Clear cart
-        // --------------------------------------------------
         if (booking.user) {
             yield cart_model_1.Cart.findOneAndUpdate({
                 user: booking.user,
@@ -113,14 +117,16 @@ const processSuccessfulPayment = (bookingId, sessionId, paymentIntentId) => __aw
             });
             console.log(`Guest cart deleted: ${booking.guestId}`);
         }
-        // --------------------------------------------------
         // 7. Commit transaction
-        // --------------------------------------------------
         yield mongoSession.commitTransaction();
         console.log(`Booking ${bookingId} successfully processed`);
+        // 8. Record purchase after successful commit
+        yield recordPurchaseAnalytics(booking);
     }
     catch (error) {
-        yield mongoSession.abortTransaction();
+        if (mongoSession.inTransaction()) {
+            yield mongoSession.abortTransaction();
+        }
         console.error(`Failed to process booking ${bookingId}:`, error);
         throw error;
     }
@@ -134,36 +140,26 @@ const processSuccessfulPayment = (bookingId, sessionId, paymentIntentId) => __aw
 const handleStripeWebhook = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b, _c;
     const signature = req.headers["stripe-signature"];
-    // --------------------------------------------------
     // 1. Check signature
-    // --------------------------------------------------
     if (!signature) {
         return res.status(400).send("Missing stripe-signature");
     }
-    // --------------------------------------------------
     // 2. Check webhook secret
-    // --------------------------------------------------
-    const webhookSecret = env_1.envVers.STRIPE
-        .STRIPE_WEBHOOK_SECRET;
+    const webhookSecret = env_1.envVers.STRIPE.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
         console.error("Stripe webhook secret is missing");
         return res.status(500).send("Stripe webhook secret is missing");
     }
     let event;
-    // --------------------------------------------------
     // 3. Verify Stripe event
-    // --------------------------------------------------
     try {
-        event =
-            stripe_config_1.stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
+        event = stripe_config_1.stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
     }
     catch (error) {
         console.error("Webhook signature verification failed:", error);
         return res.status(400).send("Webhook signature verification failed");
     }
-    // --------------------------------------------------
     // 4. Handle Stripe event
-    // --------------------------------------------------
     try {
         switch (event.type) {
             // ==============================================
@@ -177,8 +173,13 @@ const handleStripeWebhook = (req, res) => __awaiter(void 0, void 0, void 0, func
                     break;
                 }
                 console.log(`Stripe checkout completed: ${bookingId}`);
-                yield processSuccessfulPayment(bookingId, session.id, typeof session.payment_intent ===
-                    "string"
+                // Important: only process paid sessions.
+                // Delayed payment methods may complete later.
+                if (session.payment_status !== "paid") {
+                    console.log(`Checkout session is not paid yet: ${bookingId}`);
+                    break;
+                }
+                yield processSuccessfulPayment(bookingId, session.id, typeof session.payment_intent === "string"
                     ? session.payment_intent
                     : undefined);
                 break;
@@ -212,16 +213,12 @@ const handleStripeWebhook = (req, res) => __awaiter(void 0, void 0, void 0, func
                     console.error(`Booking not found: ${bookingId}`);
                     break;
                 }
-                // --------------------------------------------
                 // Don't change successful payment
-                // --------------------------------------------
-                if (booking.paymentStatus ===
-                    booking_interface_1.PaymentStatus.PAID) {
+                if (booking.paymentStatus === booking_interface_1.PaymentStatus.PAID) {
                     console.log(`Booking ${bookingId} is already paid`);
                     break;
                 }
-                booking.paymentStatus =
-                    booking_interface_1.PaymentStatus.FAILED;
+                booking.paymentStatus = booking_interface_1.PaymentStatus.FAILED;
                 yield booking.save();
                 console.log(`Payment failed: ${bookingId}`);
                 break;
@@ -233,9 +230,6 @@ const handleStripeWebhook = (req, res) => __awaiter(void 0, void 0, void 0, func
                 console.log(`Unhandled Stripe event: ${event.type}`);
             }
         }
-        // --------------------------------------------------
-        // Stripe requires successful response
-        // --------------------------------------------------
         return res.status(200).json({
             received: true,
         });
