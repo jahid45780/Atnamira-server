@@ -1,51 +1,44 @@
-
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
-import AppError from "../../errorHerplrs/appError";
-
-
-export interface CartOwner {
-  user?: string;
-  guestId?: string;
-}
 
 export const guestCartMiddleware = (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  try {
-    // Authenticated requests should be handled by auth middleware.
-    if (req.user?.userId) {
-      res.locals.cartOwner = {
-        user: req.user.userId,
-      } satisfies CartOwner;
+  // ===============================
+  // LOGGED IN USER
+  // ===============================
 
-      return next();
-    }
-
-    let guestId = req.cookies?.guestCartId as
-      | string
-      | undefined;
-
-    if (!guestId) {
-      guestId = crypto.randomUUID();
-
-      res.cookie("guestCartId", guestId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: "/",
-      });
-    }
-
+  if (req.user?.userId) {
     res.locals.cartOwner = {
-      guestId,
-    } satisfies CartOwner;
+      user: req.user.userId,
+    };
 
-    next();
-  } catch {
-    next(new AppError(500, "Unable to initialize cart"));
+    return next();
   }
+
+  // ===============================
+  // GUEST USER
+  // ===============================
+
+  let guestId = req.cookies?.guestCartId;
+
+  if (!guestId) {
+    guestId = crypto.randomUUID();
+
+    res.cookie("guestCartId", guestId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 1000 * 60 * 60 * 24 * 30,
+      path: "/",
+    });
+  }
+
+  res.locals.cartOwner = {
+    guestId,
+  };
+
+  next();
 };

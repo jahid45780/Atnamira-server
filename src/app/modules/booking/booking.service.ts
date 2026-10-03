@@ -316,10 +316,44 @@ const createCheckoutBooking = async (
 // Get My Bookings
 // ======================================================
 
-const getMyBookings = async (userId: string) => {
-  const bookings = await Booking.find({
-    user: userId,
-  })
+const getMyBookings = async ({
+  userId,
+  guestId,
+}: {
+  userId?: string;
+  guestId?: string;
+}) => {
+  // ======================================================
+  // Validate owner
+  // ======================================================
+
+  if (!userId && !guestId) {
+    throw new AppError(
+      400,
+      "No user or guest ID found"
+    );
+  }
+
+  if (userId && guestId) {
+    throw new AppError(
+      400,
+      "userId and guestId cannot be used together"
+    );
+  }
+
+  // ======================================================
+  // Build query
+  // ======================================================
+
+  const query = userId
+    ? { user: userId }
+    : { guestId };
+
+  // ======================================================
+  // Get bookings
+  // ======================================================
+
+  const bookings = await Booking.find(query)
     .sort({ createdAt: -1 })
     .populate("items.product");
 
@@ -329,16 +363,56 @@ const getMyBookings = async (userId: string) => {
 
 // ======================================================
 // Get Booking By ID
+// Guest + Logged-in User
 // ======================================================
 
-const getBookingById = async (
-  userId: string,
-  bookingId: string
-) => {
+const getBookingById = async ({
+  userId,
+  guestId,
+  bookingId,
+}: {
+  userId?: string;
+  guestId?: string;
+  bookingId: string;
+}) => {
+  // ======================================================
+  // Validate owner
+  // ======================================================
+
+  if (!userId && !guestId) {
+    throw new AppError(
+      400,
+      "No user or guest ID found"
+    );
+  }
+
+  if (userId && guestId) {
+    throw new AppError(
+      400,
+      "userId and guestId cannot be used together"
+    );
+  }
+
+  // ======================================================
+  // Build owner query
+  // ======================================================
+
+  const ownerQuery = userId
+    ? { user: userId }
+    : { guestId };
+
+  // ======================================================
+  // Find booking
+  // ======================================================
+
   const booking = await Booking.findOne({
     _id: bookingId,
-    user: userId,
+    ...ownerQuery,
   }).populate("items.product");
+
+  // ======================================================
+  // Not found
+  // ======================================================
 
   if (!booking) {
     throw new AppError(
@@ -349,6 +423,9 @@ const getBookingById = async (
 
   return booking;
 };
+
+
+
 
 
 export const bookingService = {

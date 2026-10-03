@@ -18,9 +18,14 @@ const catchAsync_1 = require("../../utils/catchAsync");
 const sendResponse_1 = require("../../utils/sendResponse");
 const appError_1 = __importDefault(require("../../errorHerplrs/appError"));
 const seo_service_1 = require("./seo.service");
+// ======================================================
+// AUDIT PAGE
+// ======================================================
 const auditPage = (0, catchAsync_1.catchAsync)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { url } = req.body;
-    if (!url || typeof url !== "string" || !url.trim()) {
+    if (!url ||
+        typeof url !== "string" ||
+        !url.trim()) {
         throw new appError_1.default(400, "URL is required");
     }
     const result = yield seo_service_1.seoService.auditPage(url.trim());
@@ -31,6 +36,9 @@ const auditPage = (0, catchAsync_1.catchAsync)((req, res) => __awaiter(void 0, v
         data: result,
     });
 }));
+// ======================================================
+// EXPORT
+// ======================================================
 exports.seoController = {
     auditPage,
 };
