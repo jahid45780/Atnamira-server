@@ -9,6 +9,7 @@ import { systemHealthRoutes } from "../modules/systemHealth/system-health.route"
 import { trackingRoutes } from "../modules/tracking/tracking.route";
 import { seoRoutes } from "../modules/seo/seo.route";
 import { analyticsRoutes } from "../modules/analytics/analytics.route";
+import { contactRoutes } from "../modules/contact/contact.route";
 
   export const  router  = Router()
 
@@ -53,6 +54,10 @@ import { analyticsRoutes } from "../modules/analytics/analytics.route";
         path:'/analytics',
         route: analyticsRoutes
     },
+     {
+        path:'/contact',
+        route: contactRoutes
+    }
 
  ]
 
