@@ -6,6 +6,7 @@ import { catchAsync } from "../../utils/catchAsync";
 import { sentResponse } from "../../utils/sendResponse";
 import { IProduct } from "./product.interface";
 import { StatusCodes } from "http-status-codes";
+import AppError from "../../errorHerplrs/appError";
 
 const createProduct = catchAsync(
   async (req: Request, res: Response) => {
@@ -114,16 +115,46 @@ const getSingleProduct = catchAsync(
 
 const updateProduct = catchAsync(
   async (req: Request, res: Response) => {
-    const id = req.params.id;
+    const id = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
 
-    if (typeof id !== "string") {
-      throw new Error("Invalid product ID");
+    if (!id) {
+      throw new AppError(
+        400,
+        "Product ID is required"
+      );
     }
 
-    const result = await productService.updateProduct(
-      id,
-      req.body
-    );
+    // =========================
+    // FILES
+    // =========================
+
+    const files = req.files as
+      | {
+          [fieldname: string]: Express.Multer.File[];
+        }
+      | undefined;
+
+    // =========================
+    // BODY
+    // =========================
+
+    const payload = req.body ?? {};
+    // =========================
+    // SERVICE
+    // =========================
+
+    const result =
+      await productService.updateProduct(
+        id,
+        payload,
+        files
+      );
+
+    // =========================
+    // RESPONSE
+    // =========================
 
     sentResponse(res, {
       success: true,
@@ -133,7 +164,6 @@ const updateProduct = catchAsync(
     });
   }
 );
-
 
   // ================================
 // Delete Product

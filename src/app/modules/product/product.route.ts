@@ -33,6 +33,16 @@ router.get(
 
 router.patch(
   "/:id",
+  multerUpload.fields([
+    {
+      name: "main",
+      maxCount: 1,
+    },
+    {
+      name: "hover",
+      maxCount: 1,
+    },
+  ]),
   productController.updateProduct
 );
 
