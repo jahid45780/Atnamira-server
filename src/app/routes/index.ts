@@ -10,6 +10,7 @@ import { trackingRoutes } from "../modules/tracking/tracking.route";
 import { seoRoutes } from "../modules/seo/seo.route";
 import { analyticsRoutes } from "../modules/analytics/analytics.route";
 import { contactRoutes } from "../modules/contact/contact.route";
+import { googleSearchConsoleRoutes } from "../modules/googleSearch/google.search.route";
 
   export const  router  = Router()
 
@@ -57,6 +58,10 @@ import { contactRoutes } from "../modules/contact/contact.route";
      {
         path:'/contact',
         route: contactRoutes
+    },
+      {
+        path:'/google-search-console',
+        route: googleSearchConsoleRoutes
     }
 
  ]
