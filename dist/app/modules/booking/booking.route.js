@@ -7,16 +7,18 @@ const user_interface_1 = require("../user/user.interface");
 const authCheck_1 = require("../auth/authCheck");
 const router = (0, express_1.Router)();
 // ======================================================
-// Checkout
+// CHECKOUT
 // Guest + Logged-in User
 // ======================================================
 router.post("/checkout", (0, authCheck_1.optionalAuth)(...Object.values(user_interface_1.Role)), booking_controller_1.bookingController.checkout);
 // ======================================================
-// Logged-in User Bookings
+// MY BOOKINGS
+// Guest + Logged-in User
 // ======================================================
-router.get("/my-bookings", (0, authCheck_1.checkAuth)(...Object.values(user_interface_1.Role)), booking_controller_1.bookingController.getMyBookings);
+router.get("/my-bookings", (0, authCheck_1.optionalAuth)(...Object.values(user_interface_1.Role)), booking_controller_1.bookingController.getMyBookings);
 // ======================================================
-// Logged-in User Booking Details
+// BOOKING DETAILS
+// Guest + Logged-in User
 // ======================================================
-router.get("/:id", (0, authCheck_1.checkAuth)(...Object.values(user_interface_1.Role)), booking_controller_1.bookingController.getBookingById);
+router.get("/:id", (0, authCheck_1.optionalAuth)(...Object.values(user_interface_1.Role)), booking_controller_1.bookingController.getBookingById);
 exports.bookingRoutes = router;

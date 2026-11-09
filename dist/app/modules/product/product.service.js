@@ -8,8 +8,12 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.productService = void 0;
+const appError_1 = __importDefault(require("../../errorHerplrs/appError"));
 const product_model_1 = require("./product.model");
 const PRODUCTS_PER_DAY = 10;
 const ROTATION_START_DATE = new Date("2026-09-23T00:00:00.000Z");
@@ -165,16 +169,198 @@ const getSingleProduct = (id) => __awaiter(void 0, void 0, void 0, function* () 
 // ================================
 // Update Product
 // ================================
-const updateProduct = (id, payload) => __awaiter(void 0, void 0, void 0, function* () {
-    const product = yield product_model_1.Product.findByIdAndUpdate(id, payload, {
+const updateProduct = (id_1, ...args_1) => __awaiter(void 0, [id_1, ...args_1], void 0, function* (id, payload = {}, files) {
+    // =========================
+    // FIND PRODUCT
+    // =========================
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    const product = yield product_model_1.Product.findById(id);
+    if (!product) {
+        throw new appError_1.default(404, "Product not found");
+    }
+    // =========================
+    // UPDATE DATA
+    // =========================
+    const updateData = {};
+    // =========================
+    // TEXT FIELDS
+    // =========================
+    if (payload.name !== undefined) {
+        updateData.name = String(payload.name);
+    }
+    if (payload.slug !== undefined) {
+        updateData.slug = String(payload.slug);
+    }
+    if (payload.category !== undefined) {
+        updateData.category = String(payload.category);
+    }
+    if (payload.description !== undefined) {
+        updateData.description = String(payload.description);
+    }
+    // =========================
+    // PRICE
+    // =========================
+    if (payload.price !== undefined &&
+        payload.price !== "") {
+        const price = Number(payload.price);
+        if (Number.isNaN(price)) {
+            throw new appError_1.default(400, "Invalid product price");
+        }
+        updateData.price = price;
+    }
+    // =========================
+    // OLD PRICE
+    // =========================
+    if (payload.oldPrice !== undefined &&
+        payload.oldPrice !== "") {
+        const oldPrice = Number(payload.oldPrice);
+        if (Number.isNaN(oldPrice)) {
+            throw new appError_1.default(400, "Invalid old price");
+        }
+        updateData.oldPrice = oldPrice;
+    }
+    // =========================
+    // STOCK
+    // =========================
+    if (payload.stock !== undefined &&
+        payload.stock !== "") {
+        const stock = Number(payload.stock);
+        if (Number.isNaN(stock)) {
+            throw new appError_1.default(400, "Invalid product stock");
+        }
+        updateData.stock = stock;
+    }
+    // =========================
+    // BADGE
+    // =========================
+    if (payload.badge !== undefined &&
+        payload.badge !== "") {
+        updateData.badge = payload.badge;
+    }
+    // =========================
+    // IS ACTIVE
+    // =========================
+    if (payload.isActive !== undefined &&
+        payload.isActive !== "") {
+        if (payload.isActive === true ||
+            payload.isActive === "true") {
+            updateData.isActive = true;
+        }
+        if (payload.isActive === false ||
+            payload.isActive === "false") {
+            updateData.isActive = false;
+        }
+    }
+    // =========================
+    // COLORS
+    // =========================
+    if (payload.colors !== undefined &&
+        payload.colors !== "") {
+        if (typeof payload.colors === "string") {
+            try {
+                const parsedColors = JSON.parse(payload.colors);
+                if (Array.isArray(parsedColors)) {
+                    updateData.colors = parsedColors;
+                }
+            }
+            catch (_l) {
+                updateData.colors = payload.colors
+                    .split(",")
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+            }
+        }
+        else if (Array.isArray(payload.colors)) {
+            updateData.colors = payload.colors;
+        }
+    }
+    // =========================
+    // SIZES
+    // =========================
+    if (payload.sizes !== undefined &&
+        payload.sizes !== "") {
+        if (typeof payload.sizes === "string") {
+            try {
+                const parsedSizes = JSON.parse(payload.sizes);
+                if (Array.isArray(parsedSizes)) {
+                    updateData.sizes = parsedSizes;
+                }
+            }
+            catch (_m) {
+                updateData.sizes = payload.sizes
+                    .split(",")
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+            }
+        }
+        else if (Array.isArray(payload.sizes)) {
+            updateData.sizes = payload.sizes;
+        }
+    }
+    // =========================
+    // EXISTING IMAGES
+    // =========================
+    const images = {
+        main: (_a = product.images) === null || _a === void 0 ? void 0 : _a.main,
+        hover: (_b = product.images) === null || _b === void 0 ? void 0 : _b.hover,
+    };
+    // =========================
+    // NEW MAIN IMAGE
+    // =========================
+    if ((_c = files === null || files === void 0 ? void 0 : files.main) === null || _c === void 0 ? void 0 : _c[0]) {
+        const mainFile = files.main[0];
+        console.log("MAIN FILE RECEIVED:", mainFile.originalname, mainFile.mimetype, mainFile.path);
+        if (!mainFile.path) {
+            throw new appError_1.default(400, "Main image upload failed");
+        }
+        images.main = mainFile.path;
+    }
+    // =========================
+    // NEW HOVER IMAGE
+    // =========================
+    if ((_d = files === null || files === void 0 ? void 0 : files.hover) === null || _d === void 0 ? void 0 : _d[0]) {
+        const hoverFile = files.hover[0];
+        console.log("HOVER FILE RECEIVED:", hoverFile.originalname, hoverFile.mimetype, hoverFile.path);
+        if (!hoverFile.path) {
+            throw new appError_1.default(400, "Hover image upload failed");
+        }
+        images.hover = hoverFile.path;
+    }
+    // =========================
+    // SAVE IMAGES
+    // =========================
+    if (((_e = files === null || files === void 0 ? void 0 : files.main) === null || _e === void 0 ? void 0 : _e[0]) ||
+        ((_f = files === null || files === void 0 ? void 0 : files.hover) === null || _f === void 0 ? void 0 : _f[0])) {
+        updateData.images = images;
+    }
+    // =========================
+    // DEBUG
+    // =========================
+    console.log("========== PRODUCT UPDATE ==========");
+    console.log("Product ID:", id);
+    console.log("Original Payload:", payload);
+    console.log("Update Data:", updateData);
+    console.log("Main Image:", (_h = (_g = files === null || files === void 0 ? void 0 : files.main) === null || _g === void 0 ? void 0 : _g[0]) === null || _h === void 0 ? void 0 : _h.path);
+    console.log("Hover Image:", (_k = (_j = files === null || files === void 0 ? void 0 : files.hover) === null || _j === void 0 ? void 0 : _j[0]) === null || _k === void 0 ? void 0 : _k.path);
+    // =========================
+    // DATABASE UPDATE
+    // =========================
+    const updatedProduct = yield product_model_1.Product.findByIdAndUpdate(id, {
+        $set: updateData,
+    }, {
         new: true,
         runValidators: true,
     });
-    if (!product) {
-        throw new Error("Product not found");
+    if (!updatedProduct) {
+        throw new appError_1.default(404, "Product update failed");
     }
+    // =========================
+    // RESULT
+    // =========================
+    console.log("Updated Product:", updatedProduct);
+    console.log("====================================");
     return {
-        data: product,
+        data: updatedProduct,
     };
 });
 // ================================
@@ -197,3 +383,6 @@ exports.productService = {
     deleteProduct,
     getBestSellingToday
 };
+function uploadToCloudinary(path) {
+    throw new Error("Function not implemented.");
+}

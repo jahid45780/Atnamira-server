@@ -21,23 +21,36 @@ import { paymentController } from "./app/modules/payment/payment.controller";
 
 
 const app = express();
-
+app.set("trust proxy", 1);
 
 // ======================================================
 // SESSION
 // ======================================================
 
+// app.use(
+//   expressSession({
+//     secret:
+//       envVers.EXPRESS_SESSION_SECRET,
+
+//     resave: false,
+
+//     saveUninitialized: false,
+//   }),
+// );
+
+
 app.use(
   expressSession({
-    secret:
-      envVers.EXPRESS_SESSION_SECRET,
-
+    secret: envVers.EXPRESS_SESSION_SECRET,
     resave: false,
-
     saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: envVers.NODE_ENV === "production",
+      sameSite: "lax",
+    },
   }),
 );
-
 
 // ======================================================
 // CORS

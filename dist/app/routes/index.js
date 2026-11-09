@@ -12,6 +12,7 @@ const system_health_route_1 = require("../modules/systemHealth/system-health.rou
 const tracking_route_1 = require("../modules/tracking/tracking.route");
 const seo_route_1 = require("../modules/seo/seo.route");
 const analytics_route_1 = require("../modules/analytics/analytics.route");
+const contact_route_1 = require("../modules/contact/contact.route");
 exports.router = (0, express_1.Router)();
 const moduleRoutes = [
     {
@@ -54,6 +55,10 @@ const moduleRoutes = [
         path: '/analytics',
         route: analytics_route_1.analyticsRoutes
     },
+    {
+        path: '/contact',
+        route: contact_route_1.contactRoutes
+    }
 ];
 moduleRoutes.forEach((route) => {
     exports.router.use(route.path, route.route);

@@ -9,6 +9,15 @@ router.post("/create-product", multer_config_1.multerUpload.array("files", 2), p
 router.get("/get-all-product", product_controller_1.productController.getAllProducts);
 router.get("/getBestSellingToday", product_controller_1.productController.getBestSellingToday);
 router.get("/:id", product_controller_1.productController.getSingleProduct);
-router.patch("/:id", product_controller_1.productController.updateProduct);
+router.patch("/:id", multer_config_1.multerUpload.fields([
+    {
+        name: "main",
+        maxCount: 1,
+    },
+    {
+        name: "hover",
+        maxCount: 1,
+    },
+]), product_controller_1.productController.updateProduct);
 router.delete("/:id", product_controller_1.productController.deleteProduct);
 exports.productRoutes = router;

@@ -17,6 +17,10 @@ const http_status_codes_1 = __importDefault(require("http-status-codes"));
 const catchAsync_1 = require("../../utils/catchAsync");
 const sendResponse_1 = require("../../utils/sendResponse");
 const stats_service_1 = require("./stats.service");
+const appError_1 = __importDefault(require("../../errorHerplrs/appError"));
+// ==========================================
+// ADMIN STATS
+// ==========================================
 const getAdminStats = (0, catchAsync_1.catchAsync)((_req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const result = yield stats_service_1.statsService.getAdminStats();
     (0, sendResponse_1.sentResponse)(res, {
@@ -26,11 +30,14 @@ const getAdminStats = (0, catchAsync_1.catchAsync)((_req, res) => __awaiter(void
         data: result,
     });
 }));
+// ==========================================
+// USER STATS
+// ==========================================
 const getUserStats = (0, catchAsync_1.catchAsync)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId;
     if (!userId) {
-        return;
+        throw new appError_1.default(http_status_codes_1.default.UNAUTHORIZED, "User not authenticated");
     }
     const result = yield stats_service_1.statsService.getUserStats(userId);
     (0, sendResponse_1.sentResponse)(res, {
@@ -40,7 +47,23 @@ const getUserStats = (0, catchAsync_1.catchAsync)((req, res) => __awaiter(void 0
         data: result,
     });
 }));
+// ==========================================
+// GET ALL ORDERS - ADMIN
+// ==========================================
+const getAllOrders = (0, catchAsync_1.catchAsync)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const result = yield stats_service_1.statsService.getAllOrders(page, limit);
+    (0, sendResponse_1.sentResponse)(res, {
+        success: true,
+        statusCode: http_status_codes_1.default.OK,
+        message: "All orders retrieved successfully",
+        data: result.data,
+        meta: result.meta,
+    });
+}));
 exports.statsController = {
     getAdminStats,
     getUserStats,
+    getAllOrders
 };

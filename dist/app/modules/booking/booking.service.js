@@ -200,22 +200,57 @@ const createCheckoutBooking = (payload) => __awaiter(void 0, void 0, void 0, fun
 // ======================================================
 // Get My Bookings
 // ======================================================
-const getMyBookings = (userId) => __awaiter(void 0, void 0, void 0, function* () {
-    const bookings = yield booking_model_1.Booking.find({
-        user: userId,
-    })
+const getMyBookings = (_a) => __awaiter(void 0, [_a], void 0, function* ({ userId, guestId, }) {
+    // ======================================================
+    // Validate owner
+    // ======================================================
+    if (!userId && !guestId) {
+        throw new appError_1.default(400, "No user or guest ID found");
+    }
+    if (userId && guestId) {
+        throw new appError_1.default(400, "userId and guestId cannot be used together");
+    }
+    // ======================================================
+    // Build query
+    // ======================================================
+    const query = userId
+        ? { user: userId }
+        : { guestId };
+    // ======================================================
+    // Get bookings
+    // ======================================================
+    const bookings = yield booking_model_1.Booking.find(query)
         .sort({ createdAt: -1 })
         .populate("items.product");
     return bookings;
 });
 // ======================================================
 // Get Booking By ID
+// Guest + Logged-in User
 // ======================================================
-const getBookingById = (userId, bookingId) => __awaiter(void 0, void 0, void 0, function* () {
-    const booking = yield booking_model_1.Booking.findOne({
-        _id: bookingId,
-        user: userId,
-    }).populate("items.product");
+const getBookingById = (_a) => __awaiter(void 0, [_a], void 0, function* ({ userId, guestId, bookingId, }) {
+    // ======================================================
+    // Validate owner
+    // ======================================================
+    if (!userId && !guestId) {
+        throw new appError_1.default(400, "No user or guest ID found");
+    }
+    if (userId && guestId) {
+        throw new appError_1.default(400, "userId and guestId cannot be used together");
+    }
+    // ======================================================
+    // Build owner query
+    // ======================================================
+    const ownerQuery = userId
+        ? { user: userId }
+        : { guestId };
+    // ======================================================
+    // Find booking
+    // ======================================================
+    const booking = yield booking_model_1.Booking.findOne(Object.assign({ _id: bookingId }, ownerQuery)).populate("items.product");
+    // ======================================================
+    // Not found
+    // ======================================================
     if (!booking) {
         throw new appError_1.default(404, "Booking not found");
     }

@@ -8,12 +8,16 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.productController = void 0;
 const product_service_1 = require("./product.service");
 const catchAsync_1 = require("../../utils/catchAsync");
 const sendResponse_1 = require("../../utils/sendResponse");
 const http_status_codes_1 = require("http-status-codes");
+const appError_1 = __importDefault(require("../../errorHerplrs/appError"));
 const createProduct = (0, catchAsync_1.catchAsync)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b;
     // Product data comes as JSON string from multipart/form-data
@@ -82,11 +86,28 @@ const getSingleProduct = (0, catchAsync_1.catchAsync)((req, res) => __awaiter(vo
 // Update Product
 // ================================
 const updateProduct = (0, catchAsync_1.catchAsync)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const id = req.params.id;
-    if (typeof id !== "string") {
-        throw new Error("Invalid product ID");
+    var _a;
+    const id = Array.isArray(req.params.id)
+        ? req.params.id[0]
+        : req.params.id;
+    if (!id) {
+        throw new appError_1.default(400, "Product ID is required");
     }
-    const result = yield product_service_1.productService.updateProduct(id, req.body);
+    // =========================
+    // FILES
+    // =========================
+    const files = req.files;
+    // =========================
+    // BODY
+    // =========================
+    const payload = (_a = req.body) !== null && _a !== void 0 ? _a : {};
+    // =========================
+    // SERVICE
+    // =========================
+    const result = yield product_service_1.productService.updateProduct(id, payload, files);
+    // =========================
+    // RESPONSE
+    // =========================
     (0, sendResponse_1.sentResponse)(res, {
         success: true,
         statusCode: 200,

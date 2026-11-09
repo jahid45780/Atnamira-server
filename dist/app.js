@@ -15,13 +15,27 @@ const env_1 = require("./app/config/env");
 require("./app/config/passport");
 const payment_controller_1 = require("./app/modules/payment/payment.controller");
 const app = (0, express_1.default)();
+app.set("trust proxy", 1);
 // ======================================================
 // SESSION
 // ======================================================
+// app.use(
+//   expressSession({
+//     secret:
+//       envVers.EXPRESS_SESSION_SECRET,
+//     resave: false,
+//     saveUninitialized: false,
+//   }),
+// );
 app.use((0, express_session_1.default)({
     secret: env_1.envVers.EXPRESS_SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        secure: env_1.envVers.NODE_ENV === "production",
+        sameSite: "lax",
+    },
 }));
 // ======================================================
 // CORS
