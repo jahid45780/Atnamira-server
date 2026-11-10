@@ -60,7 +60,7 @@ import { googleSearchConsoleRoutes } from "../modules/googleSearch/google.search
         route: contactRoutes
     },
       {
-        path:'/google-search-console',
+        path:'/google-search',
         route: googleSearchConsoleRoutes
     }
 

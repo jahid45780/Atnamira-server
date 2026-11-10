@@ -1,6 +1,4 @@
-
-
-import { google, Auth } from "googleapis";
+import { google } from "googleapis";
 import crypto from "crypto";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import httpStatus from "http-status-codes";
@@ -10,9 +8,21 @@ import { envVers } from "../../config/env";
 import { GoogleSearchConsole } from "./google.search.model";
 
 
-// ============================================
-// ENVIRONMENT CONFIGURATION
-// ============================================
+// ---------------------------------------------
+// Types
+// ---------------------------------------------
+
+type AnalyticsDimension = "query" | "page" | "country" | "device" | "date";
+
+interface AnalyticsOptions {
+  startDate: string;
+  endDate: string;
+  rowLimit?: number;
+}
+
+// ---------------------------------------------
+// OAuth Client
+// ---------------------------------------------
 
 const getOAuthClient = () => {
   const clientId = process.env.GOOGLE_SEARCH_CONSOLE_CLIENT_ID;
@@ -22,42 +32,35 @@ const getOAuthClient = () => {
   if (!clientId || !clientSecret || !redirectUri) {
     throw new AppError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      "Google Search Console credentials are not configured"
+      "Google Search Console OAuth environment variables are missing"
     );
   }
 
-  return new google.auth.OAuth2(
-    clientId,
-    clientSecret,
-    redirectUri
-  );
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 };
 
-// ============================================
-// TOKEN ENCRYPTION
-// ============================================
+// ---------------------------------------------
+// Token Encryption / Decryption
+// ---------------------------------------------
 
 const getEncryptionKey = (): Buffer => {
-  const key = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
+  const encryptionKey = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
 
-  if (!key || !/^[a-fA-F0-9]{64}$/.test(key)) {
+  if (!encryptionKey || !/^[0-9a-fA-F]{64}$/.test(encryptionKey)) {
     throw new AppError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      "Google token encryption key must be a 64-character hexadecimal key"
+      "GOOGLE_TOKEN_ENCRYPTION_KEY must be a 64-character hexadecimal string"
     );
   }
 
-  return Buffer.from(key, "hex");
+  return Buffer.from(encryptionKey, "hex");
 };
 
 const encryptToken = (token: string): string => {
+  const key = getEncryptionKey();
   const iv = crypto.randomBytes(12);
 
-  const cipher = crypto.createCipheriv(
-    "aes-256-gcm",
-    getEncryptionKey(),
-    iv
-  );
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
 
   const encrypted = Buffer.concat([
     cipher.update(token, "utf8"),
@@ -74,60 +77,65 @@ const encryptToken = (token: string): string => {
 };
 
 const decryptToken = (encryptedToken: string): string => {
-  const [ivHex, authTagHex, encryptedHex] =
-    encryptedToken.split(":");
+  try {
+    const [ivHex, authTagHex, encryptedHex] = encryptedToken.split(":");
 
-  if (!ivHex || !authTagHex || !encryptedHex) {
+    if (!ivHex || !authTagHex || !encryptedHex) {
+      throw new Error("Invalid encrypted token format");
+    }
+
+    const key = getEncryptionKey();
+    const iv = Buffer.from(ivHex, "hex");
+    const authTag = Buffer.from(authTagHex, "hex");
+    const encrypted = Buffer.from(encryptedHex, "hex");
+
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+
+    decipher.setAuthTag(authTag);
+
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+
+    return decrypted.toString("utf8");
+  } catch {
     throw new AppError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      "Invalid encrypted Google token"
+      "Unable to decrypt Google OAuth token. Check your encryption key."
     );
   }
-
-  const decipher = crypto.createDecipheriv(
-    "aes-256-gcm",
-    getEncryptionKey(),
-    Buffer.from(ivHex, "hex")
-  );
-
-  decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
-
-  const decrypted = Buffer.concat([
-    decipher.update(Buffer.from(encryptedHex, "hex")),
-    decipher.final(),
-  ]);
-
-  return decrypted.toString("utf8");
 };
 
-// ============================================
-// SAFE RESPONSE
-// ============================================
+// ---------------------------------------------
+// Safe Connection Response
+// ---------------------------------------------
 
 const getSafeConnection = (connection: any) => {
+  if (!connection) return null;
+
   return {
-    _id: connection._id,
+    id: connection._id,
     googleEmail: connection.googleEmail,
     isConnected: connection.isConnected,
     selectedProperty: connection.selectedProperty,
-    properties: connection.properties,
+    properties: connection.properties || [],
     connectedBy: connection.connectedBy,
-    tokenExpiryDate: connection.tokenExpiryDate,
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
   };
 };
 
-// ============================================
-// GOOGLE OAUTH URL
-// ============================================
+// ---------------------------------------------
+// Get OAuth Authorization URL
+// ---------------------------------------------
 
-const getOAuthUrl = (adminId: string) => {
+const getOAuthUrl = async (adminId: string) => {
   const oauth2Client = getOAuthClient();
 
   const state = jwt.sign(
     {
-      userId: adminId,
+      adminId,
       purpose: "google-search-console",
     },
     envVers.JWT_ACCESS_SECRET,
@@ -136,7 +144,7 @@ const getOAuthUrl = (adminId: string) => {
     }
   );
 
-  return oauth2Client.generateAuthUrl({
+  const authorizationUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: [
@@ -146,16 +154,15 @@ const getOAuthUrl = (adminId: string) => {
     ],
     state,
   });
+
+  return authorizationUrl;
 };
 
-// ============================================
-// GOOGLE OAUTH CALLBACK
-// ============================================
+// ---------------------------------------------
+// Handle OAuth Callback
+// ---------------------------------------------
 
-const handleOAuthCallback = async (
-  code: string,
-  state: string
-) => {
+const handleOAuthCallback = async (code: string, state: string) => {
   if (!code || !state) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
@@ -163,27 +170,25 @@ const handleOAuthCallback = async (
     );
   }
 
-  let decodedState: JwtPayload;
+  let decodedState: string | JwtPayload;
 
   try {
-    const decoded = jwt.verify(
-      state,
-      envVers.JWT_ACCESS_SECRET
-    );
-
-    if (
-      typeof decoded === "string" ||
-      decoded.purpose !== "google-search-console" ||
-      !decoded.userId
-    ) {
-      throw new Error("Invalid OAuth state");
-    }
-
-    decodedState = decoded as JwtPayload;
+    decodedState = jwt.verify(state, envVers.JWT_ACCESS_SECRET);
   } catch {
     throw new AppError(
       httpStatus.UNAUTHORIZED,
       "Invalid or expired Google OAuth state"
+    );
+  }
+
+  if (
+    typeof decodedState === "string" ||
+    decodedState.purpose !== "google-search-console" ||
+    !decodedState.adminId
+  ) {
+    throw new AppError(
+      httpStatus.UNAUTHORIZED,
+      "Invalid Google OAuth state"
     );
   }
 
@@ -194,46 +199,45 @@ const handleOAuthCallback = async (
   if (!tokens.access_token) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      "Google access token was not received"
+      "Google did not return an access token"
     );
   }
 
   oauth2Client.setCredentials(tokens);
 
-  // Get Google account information
   const oauth2 = google.oauth2({
     version: "v2",
     auth: oauth2Client,
   });
 
-  const { data: account } = await oauth2.userinfo.get();
+  const { data: userInfo } = await oauth2.userinfo.get();
 
-  if (!account.email) {
+  if (!userInfo.email) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
       "Unable to retrieve Google account email"
     );
   }
 
-  // Find existing connection
+  const googleEmail = userInfo.email.toLowerCase();
+
   const existingConnection = await GoogleSearchConsole.findOne({
-    googleEmail: account.email,
+    googleEmail,
   }).select("+accessToken +refreshToken");
 
   const refreshToken =
     tokens.refresh_token ||
-    (existingConnection
+    (existingConnection?.refreshToken
       ? decryptToken(existingConnection.refreshToken)
       : undefined);
 
   if (!refreshToken) {
     throw new AppError(
       httpStatus.BAD_REQUEST,
-      "Google refresh token was not received. Please reconnect with consent."
+      "Google did not provide a refresh token. Please revoke the previous app access and connect again."
     );
   }
 
-  // Fetch Search Console properties
   const searchConsole = google.searchconsole({
     version: "v1",
     auth: oauth2Client,
@@ -243,11 +247,11 @@ const handleOAuthCallback = async (
 
   const properties = (sitesData.siteEntry || []).map((site) => ({
     siteUrl: site.siteUrl || "",
-    permissionLevel: site.permissionLevel || "unknown",
-  })).filter((site) => site.siteUrl);
+    permissionLevel: site.permissionLevel || "siteUnverifiedUser",
+  }));
 
   const connectionData = {
-    googleEmail: account.email.toLowerCase(),
+    googleEmail,
     accessToken: encryptToken(tokens.access_token),
     refreshToken: encryptToken(refreshToken),
     tokenExpiryDate: tokens.expiry_date
@@ -255,48 +259,62 @@ const handleOAuthCallback = async (
       : undefined,
     isConnected: true,
     properties,
-    connectedBy: decodedState.userId,
+    connectedBy: decodedState.adminId as string,
   };
 
-  // Save connection
   let connection;
 
   if (existingConnection) {
     existingConnection.set(connectionData);
     connection = await existingConnection.save();
   } else {
-    connection = await GoogleSearchConsole.create(
-      connectionData
-    );
+    connection = await GoogleSearchConsole.create(connectionData);
   }
 
   return getSafeConnection(connection);
 };
 
-// ============================================
-// GET GOOGLE CONNECTION STATUS
-// ============================================
+// ---------------------------------------------
+// Get Connection Status
+// ---------------------------------------------
 
 const getConnectionStatus = async () => {
   const connection = await GoogleSearchConsole.findOne({
     isConnected: true,
   });
 
-  if (!connection) {
-    return {
-      isConnected: false,
-      googleEmail: null,
-      properties: [],
-      selectedProperty: null,
-    };
-  }
-
   return getSafeConnection(connection);
 };
 
-// ============================================
-// REFRESH ACCESS TOKEN
-// ============================================
+// ---------------------------------------------
+// Get Active Connection
+// ---------------------------------------------
+
+const getActiveConnection = async () => {
+  const connection = await GoogleSearchConsole.findOne({
+    isConnected: true,
+  });
+
+  if (!connection) {
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      "Google Search Console is not connected"
+    );
+  }
+
+  if (!connection.selectedProperty) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Please select a Google Search Console property first"
+    );
+  }
+
+  return connection;
+};
+
+// ---------------------------------------------
+// Refresh Access Token
+// ---------------------------------------------
 
 const refreshAccessToken = async (connectionId: string) => {
   const connection = await GoogleSearchConsole.findById(
@@ -312,27 +330,25 @@ const refreshAccessToken = async (connectionId: string) => {
 
   const oauth2Client = getOAuthClient();
 
+  const refreshToken = decryptToken(connection.refreshToken);
+
   oauth2Client.setCredentials({
-    refresh_token: decryptToken(connection.refreshToken),
+    refresh_token: refreshToken,
   });
 
   const { credentials } = await oauth2Client.refreshAccessToken();
 
   if (!credentials.access_token) {
     throw new AppError(
-      httpStatus.BAD_REQUEST,
-      "Unable to refresh Google access token"
+      httpStatus.UNAUTHORIZED,
+      "Unable to refresh Google access token. Please reconnect your account."
     );
   }
 
-  connection.accessToken = encryptToken(
-    credentials.access_token
-  );
+  connection.accessToken = encryptToken(credentials.access_token);
 
   if (credentials.refresh_token) {
-    connection.refreshToken = encryptToken(
-      credentials.refresh_token
-    );
+    connection.refreshToken = encryptToken(credentials.refresh_token);
   }
 
   connection.tokenExpiryDate = credentials.expiry_date
@@ -341,16 +357,14 @@ const refreshAccessToken = async (connectionId: string) => {
 
   await connection.save();
 
-  return getSafeConnection(connection);
+  return true;
 };
 
-// ============================================
-// GET AUTHENTICATED GOOGLE CLIENT
-// ============================================
+// ---------------------------------------------
+// Get Authenticated Google Client
+// ---------------------------------------------
 
-const getAuthenticatedClient = async (
-  connectionId: string
-): Promise<Auth.OAuth2Client> => {
+const getAuthenticatedClient = async (connectionId: string) => {
   let connection = await GoogleSearchConsole.findById(
     connectionId
   ).select("+accessToken +refreshToken");
@@ -358,28 +372,27 @@ const getAuthenticatedClient = async (
   if (!connection || !connection.isConnected) {
     throw new AppError(
       httpStatus.NOT_FOUND,
-      "Google Search Console is not connected"
+      "Google Search Console connection not found"
     );
   }
 
-  // Refresh when token is expired or about to expire
-  const isExpired =
+  const shouldRefresh =
     !connection.tokenExpiryDate ||
-    connection.tokenExpiryDate.getTime() <= Date.now() + 60000;
+    connection.tokenExpiryDate.getTime() <= Date.now() + 60_000;
 
-  if (isExpired) {
+  if (shouldRefresh) {
     await refreshAccessToken(connectionId);
 
     connection = await GoogleSearchConsole.findById(
       connectionId
     ).select("+accessToken +refreshToken");
-  }
 
-  if (!connection) {
-    throw new AppError(
-      httpStatus.NOT_FOUND,
-      "Google connection not found"
-    );
+    if (!connection) {
+      throw new AppError(
+        httpStatus.NOT_FOUND,
+        "Google Search Console connection not found"
+      );
+    }
   }
 
   const oauth2Client = getOAuthClient();
@@ -393,9 +406,9 @@ const getAuthenticatedClient = async (
   return oauth2Client;
 };
 
-// ============================================
-// GET SEARCH CONSOLE PROPERTIES
-// ============================================
+// ---------------------------------------------
+// Get Google Search Console Properties
+// ---------------------------------------------
 
 const getProperties = async (connectionId: string) => {
   const auth = await getAuthenticatedClient(connectionId);
@@ -407,20 +420,33 @@ const getProperties = async (connectionId: string) => {
 
   const { data } = await searchConsole.sites.list();
 
-  return (data.siteEntry || []).map((site) => ({
-    siteUrl: site.siteUrl,
-    permissionLevel: site.permissionLevel,
+  const properties = (data.siteEntry || []).map((site) => ({
+    siteUrl: site.siteUrl || "",
+    permissionLevel: site.permissionLevel || "siteUnverifiedUser",
   }));
+
+  await GoogleSearchConsole.findByIdAndUpdate(connectionId, {
+    properties,
+  });
+
+  return properties;
 };
 
-// ============================================
-// SELECT SEARCH CONSOLE PROPERTY
-// ============================================
+// ---------------------------------------------
+// Select Search Console Property
+// ---------------------------------------------
 
 const selectProperty = async (
   connectionId: string,
   siteUrl: string
 ) => {
+  if (!siteUrl) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Property URL is required"
+    );
+  }
+
   const connection = await GoogleSearchConsole.findById(
     connectionId
   );
@@ -432,27 +458,30 @@ const selectProperty = async (
     );
   }
 
-  const propertyExists = connection.properties?.some(
-    (property: { siteUrl: string; }) => property.siteUrl === siteUrl
+  const properties = await getProperties(connectionId);
+
+  const selectedProperty = properties.find(
+    (property) => property.siteUrl === siteUrl
   );
 
-  if (!propertyExists) {
+  if (!selectedProperty) {
     throw new AppError(
-      httpStatus.BAD_REQUEST,
-      "This property is not available in your Google account"
+      httpStatus.FORBIDDEN,
+      "This Google account does not have access to the selected property"
     );
   }
 
   connection.selectedProperty = siteUrl;
+  connection.properties = properties;
 
   await connection.save();
 
   return getSafeConnection(connection);
 };
 
-// ============================================
-// DISCONNECT GOOGLE SEARCH CONSOLE
-// ============================================
+// ---------------------------------------------
+// Disconnect Google Search Console
+// ---------------------------------------------
 
 const disconnect = async (connectionId: string) => {
   const connection = await GoogleSearchConsole.findById(
@@ -466,33 +495,229 @@ const disconnect = async (connectionId: string) => {
     );
   }
 
-  // Revoke Google OAuth token
-  const oauth2Client = getOAuthClient();
-
   try {
-    await oauth2Client.revokeToken(
-      decryptToken(connection.refreshToken)
-    );
+    const oauth2Client = getOAuthClient();
+
+    oauth2Client.setCredentials({
+      refresh_token: decryptToken(connection.refreshToken),
+    });
+
+    await oauth2Client.revokeCredentials();
   } catch {
-    // Continue local disconnection even if Google revocation fails
+    // Delete the local connection even if Google's revoke request fails.
   }
 
   await GoogleSearchConsole.findByIdAndDelete(connectionId);
 
-  return null;
+  return {
+    message: "Google Search Console disconnected successfully",
+  };
 };
 
-// ============================================
-// EXPORT SERVICE
-// ============================================
+// ---------------------------------------------
+// Analytics Date Validation
+// ---------------------------------------------
+
+const validateAnalyticsDates = (
+  startDate: string,
+  endDate: string
+) => {
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+  const isValidDate = (value: string) => {
+    if (!dateRegex.test(value)) return false;
+
+    const date = new Date(`${value}T00:00:00.000Z`);
+
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.toISOString().slice(0, 10) === value
+    );
+  };
+
+  if (!isValidDate(startDate) || !isValidDate(endDate)) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Dates must be valid YYYY-MM-DD values"
+    );
+  }
+
+  if (startDate > endDate) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Start date cannot be greater than end date"
+    );
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (endDate > today) {
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "End date cannot be in the future"
+    );
+  }
+};
+
+// ---------------------------------------------
+// Execute Search Analytics Query
+// ---------------------------------------------
+
+const executeAnalyticsQuery = async (
+  dimensions: AnalyticsDimension[],
+  options: AnalyticsOptions
+) => {
+  validateAnalyticsDates(options.startDate, options.endDate);
+
+  const connection = await getActiveConnection();
+
+  const auth = await getAuthenticatedClient(
+    connection.id
+  );
+
+  const searchConsole = google.searchconsole({
+    version: "v1",
+    auth,
+  });
+
+  const rowLimit = Math.min(
+    Math.max(options.rowLimit || 1000, 1),
+    25000
+  );
+
+  const requestBody: {
+    startDate: string;
+    endDate: string;
+    dimensions?: AnalyticsDimension[];
+    rowLimit: number;
+    startRow: number;
+    type: "web";
+  } = {
+    startDate: options.startDate,
+    endDate: options.endDate,
+    rowLimit,
+    startRow: 0,
+    type: "web",
+  };
+
+  if (dimensions.length > 0) {
+    requestBody.dimensions = dimensions;
+  }
+
+  const { data } = await searchConsole.searchanalytics.query({
+    siteUrl: connection.selectedProperty!,
+    requestBody,
+  });
+
+  return {
+    property: connection.selectedProperty,
+    startDate: options.startDate,
+    endDate: options.endDate,
+    rows: (data.rows || []).map((row) => ({
+      keys: row.keys || [],
+      clicks: row.clicks || 0,
+      impressions: row.impressions || 0,
+      ctr: row.ctr || 0,
+      position: row.position || 0,
+    })),
+    responseAggregationType: data.responseAggregationType,
+  };
+};
+
+// ---------------------------------------------
+// Overall Search Analytics
+// ---------------------------------------------
+
+const getAnalytics = async (options: AnalyticsOptions) => {
+  const result = await executeAnalyticsQuery([], options);
+
+  const totals = result.rows.reduce(
+    (acc, row) => ({
+      clicks: acc.clicks + row.clicks,
+      impressions: acc.impressions + row.impressions,
+      weightedPosition:
+        acc.weightedPosition + row.position * row.impressions,
+    }),
+    {
+      clicks: 0,
+      impressions: 0,
+      weightedPosition: 0,
+    }
+  );
+
+  return {
+    property: result.property,
+    startDate: result.startDate,
+    endDate: result.endDate,
+    clicks: totals.clicks,
+    impressions: totals.impressions,
+    ctr:
+      totals.impressions > 0
+        ? totals.clicks / totals.impressions
+        : 0,
+    position:
+      totals.impressions > 0
+        ? totals.weightedPosition / totals.impressions
+        : 0,
+  };
+};
+
+// ---------------------------------------------
+// Top Search Queries
+// ---------------------------------------------
+
+const getTopQueries = async (options: AnalyticsOptions) => {
+  return executeAnalyticsQuery(["query"], options);
+};
+
+// ---------------------------------------------
+// Top Pages
+// ---------------------------------------------
+
+const getTopPages = async (options: AnalyticsOptions) => {
+  return executeAnalyticsQuery(["page"], options);
+};
+
+// ---------------------------------------------
+// Country Analytics
+// ---------------------------------------------
+
+const getCountryAnalytics = async (options: AnalyticsOptions) => {
+  return executeAnalyticsQuery(["country"], options);
+};
+
+// ---------------------------------------------
+// Device Analytics
+// ---------------------------------------------
+
+const getDeviceAnalytics = async (options: AnalyticsOptions) => {
+  return executeAnalyticsQuery(["device"], options);
+};
+
+// ---------------------------------------------
+// Date-wise Analytics
+// ---------------------------------------------
+
+const getDateAnalytics = async (options: AnalyticsOptions) => {
+  return executeAnalyticsQuery(["date"], options);
+};
+
+// ---------------------------------------------
+// Export Service
+// ---------------------------------------------
 
 export const googleSearchConsoleService = {
   getOAuthUrl,
   handleOAuthCallback,
   getConnectionStatus,
   refreshAccessToken,
-  getAuthenticatedClient,
   getProperties,
   selectProperty,
   disconnect,
+  getAnalytics,
+  getTopQueries,
+  getTopPages,
+  getCountryAnalytics,
+  getDeviceAnalytics,
+  getDateAnalytics,
 };

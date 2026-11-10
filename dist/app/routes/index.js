@@ -1,4 +1,4 @@
-"use strict";
+
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
@@ -13,6 +13,7 @@ const tracking_route_1 = require("../modules/tracking/tracking.route");
 const seo_route_1 = require("../modules/seo/seo.route");
 const analytics_route_1 = require("../modules/analytics/analytics.route");
 const contact_route_1 = require("../modules/contact/contact.route");
+const google_search_route_1 = require("../modules/googleSearch/google.search.route");
 exports.router = (0, express_1.Router)();
 const moduleRoutes = [
     {
@@ -58,6 +59,10 @@ const moduleRoutes = [
     {
         path: '/contact',
         route: contact_route_1.contactRoutes
+    },
+    {
+        path: '/google-search-console',
+        route: google_search_route_1.googleSearchConsoleRoutes
     }
 ];
 moduleRoutes.forEach((route) => {

@@ -50,4 +50,10 @@ router.delete(
   googleSearchConsoleController.disconnect
 );
 
+router.get(
+  "/dates",
+  adminAuth,
+  googleSearchConsoleController.getDateAnalytics
+);
+
 export const googleSearchConsoleRoutes = router;
