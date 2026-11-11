@@ -11,6 +11,7 @@ import { seoRoutes } from "../modules/seo/seo.route";
 import { analyticsRoutes } from "../modules/analytics/analytics.route";
 import { contactRoutes } from "../modules/contact/contact.route";
 import { googleSearchConsoleRoutes } from "../modules/googleSearch/google.search.route";
+import { googleTagManagerRoutes } from "../modules/googleTag/google.tag.route";
 
   export const  router  = Router()
 
@@ -62,6 +63,10 @@ import { googleSearchConsoleRoutes } from "../modules/googleSearch/google.search
       {
         path:'/google-search',
         route: googleSearchConsoleRoutes
+    },
+       {
+        path:'/google-tag-manager',
+        route: googleTagManagerRoutes
     }
 
  ]

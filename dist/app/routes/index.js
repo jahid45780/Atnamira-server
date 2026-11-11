@@ -1,4 +1,4 @@
-
+"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
@@ -61,7 +61,7 @@ const moduleRoutes = [
         route: contact_route_1.contactRoutes
     },
     {
-        path: '/google-search-console',
+        path: '/google-search',
         route: google_search_route_1.googleSearchConsoleRoutes
     }
 ];
